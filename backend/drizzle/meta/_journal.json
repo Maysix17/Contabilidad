@@ -1,0 +1,48 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1790527773198,
+      "tag": "0000_flashy_silver_sable",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1790613593407,
+      "tag": "0001_windy_saracen",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790617416571,
+      "tag": "0002_creditos_abonos_roles",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790618293060,
+      "tag": "0003_montos_numeric",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790624000000,
+      "tag": "0004_cuotas_rutas_fotos_interes_fijo",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790625500000,
+      "tag": "0005_usuarios_cedula",
+      "breakpoints": true
+    }
+  ]
+}

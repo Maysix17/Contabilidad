@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: contabilidad-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: contabilidad
+      POSTGRES_PASSWORD: contabilidad
+      POSTGRES_DB: contabilidad
+    ports:
+      - '55432:5432'
+    volumes:
+      - contabilidad-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U contabilidad -d contabilidad']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  contabilidad-pgdata:
