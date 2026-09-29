@@ -102,7 +102,7 @@ export default function AbonosScreen() {
           {clientes.map((cliente) => (
             <Link
               key={cliente.id}
-              href={{ pathname: '/abonos/[clienteId]', params: { clienteId: cliente.id } }}
+              href={{ pathname: '/creditos/[id]', params: { id: cliente.creditoActivo.id } }}
               asChild>
               <Pressable style={({ pressed }) => [pressed && styles.press]}>
                 <ThemedView type="backgroundElement" style={styles.tarjeta}>

@@ -15,13 +15,7 @@ import {
 
 export const rolUsuario = pgEnum('rol_usuario', ['administrador', 'operador']);
 
-export const periodoPago = pgEnum('periodo_pago', [
-  'diario',
-  'semanal',
-  'quincenal',
-  'bisemanal',
-  'mensual',
-]);
+export const periodoPago = pgEnum('periodo_pago', ['diario', 'semanal', 'quincenal', 'mensual']);
 
 export const estadoCredito = pgEnum('estado_credito', ['activo', 'finalizado', 'cerrado']);
 

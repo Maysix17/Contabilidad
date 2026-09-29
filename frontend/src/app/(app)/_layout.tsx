@@ -86,7 +86,6 @@ export default function AppLayout() {
       <Tabs.Screen name="creditos/[id]" options={{ href: null }} />
       <Tabs.Screen name="clientes/nuevo" options={{ href: null }} />
       <Tabs.Screen name="clientes/[id]" options={{ href: null }} />
-      <Tabs.Screen name="abonos/[clienteId]" options={{ href: null }} />
       <Tabs.Screen name="usuarios/nuevo" options={{ href: null }} />
     </Tabs>
   );

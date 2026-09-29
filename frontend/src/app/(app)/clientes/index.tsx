@@ -69,7 +69,7 @@ export default function ClientesScreen() {
         <TextInput
           value={search}
           onChangeText={setSearch}
-          placeholder="Buscar por nombre, documento o ciudad"
+          placeholder="Buscar por nombre o documento"
           placeholderTextColor={theme.textSecondary}
           style={[
             styles.search,

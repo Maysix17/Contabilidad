@@ -43,6 +43,13 @@
       "when": 1790625500000,
       "tag": "0005_usuarios_cedula",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790711400000,
+      "tag": "0006_quitar_bisemanal",
+      "breakpoints": true
     }
   ]
 }

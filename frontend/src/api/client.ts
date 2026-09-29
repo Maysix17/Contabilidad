@@ -5,7 +5,7 @@ const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:4000';
 const STORAGE_KEY = 'contabilidad.sesion';
 
 export type RolUsuario = 'administrador' | 'operador';
-export type PeriodoPago = 'diario' | 'semanal' | 'quincenal' | 'bisemanal' | 'mensual';
+export type PeriodoPago = 'diario' | 'semanal' | 'quincenal' | 'mensual';
 export type EstadoCredito = 'activo' | 'finalizado' | 'cerrado';
 
 export interface SessionUser {

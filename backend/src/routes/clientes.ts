@@ -82,8 +82,6 @@ clienteRoutes.get('/', async (c) => {
       ilike(clientes.nombre, pattern),
       ilike(clientes.apellido, pattern),
       ilike(clientes.documento, pattern),
-      ilike(clientes.ciudad, pattern),
-      ilike(clientes.alias, pattern),
     );
     if (matches) {
       conditions.push(matches);

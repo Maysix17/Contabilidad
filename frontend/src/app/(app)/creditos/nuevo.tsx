@@ -35,7 +35,6 @@ const PERIODOS: { valor: PeriodoPago; texto: string }[] = [
   { valor: 'diario', texto: 'Diario' },
   { valor: 'semanal', texto: 'Semanal' },
   { valor: 'quincenal', texto: 'Quincenal' },
-  { valor: 'bisemanal', texto: 'Bisemanal' },
   { valor: 'mensual', texto: 'Mensual' },
 ];
 

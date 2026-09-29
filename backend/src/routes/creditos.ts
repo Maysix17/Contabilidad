@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, exists, ilike, or, type SQL } from 'drizzle-orm';
+import { and, asc, count, desc, eq, exists, ilike, lt, ne, or, type SQL } from 'drizzle-orm';
 import { Hono } from 'hono';
 
 import {
@@ -40,7 +40,7 @@ function assertDate(value: unknown, campo: string): string {
 
 function assertPeriodo(value: unknown, campo: string): PeriodoPago {
   if (typeof value !== 'string' || !esPeriodoValido(value)) {
-    throw badRequest(`${campo} debe ser diario, semanal, quincenal, bisemanal o mensual`);
+    throw badRequest(`${campo} debe ser diario, semanal, quincenal o mensual`);
   }
   return value;
 }
@@ -434,10 +434,87 @@ creditoRoutes.post('/:id/abonos', async (c) => {
     if (!cuota) throw notFound('La cuota no pertenece a este credito');
     if (cuota.estado === 'pagada') throw conflict('La cuota ya esta pagada');
 
+    /**
+     * Las cuotas se pagan en orden: no se puede saltar una pendiente y saldar
+     * una futura, porque eso dejaria meses sin cubrir y el atraso pasaria
+     * desapercibido. Solo se habilita la mas antigua pendiente, y el abono
+     * libre cubre varias contiguas de una vez.
+     */
+    const [anteriores] = await db
+      .select({ total: count() })
+      .from(cuotas)
+      .where(
+        and(
+          eq(cuotas.creditoId, id),
+          lt(cuotas.numero, cuota.numero),
+          ne(cuotas.estado, 'pagada'),
+        ),
+      );
+
+    if (anteriores && Number(anteriores.total) > 0) {
+      throw conflict('Primero debes liquidar las cuotas anteriores');
+    }
+
     const valorCuota = Math.round(Number(cuota.monto) * 100) / 100;
     if (Math.round((monto - valorCuota) * 100) / 100 !== 0) {
       throw badRequest(
         `El abono debe ser exactamente el valor de la cuota (${formatearPesos(valorCuota)})`,
+      );
+    }
+  }
+
+  if (!cuotaId) {
+    const pendientes = await db
+      .select({ id: cuotas.id, monto: cuotas.monto })
+      .from(cuotas)
+      .where(and(eq(cuotas.creditoId, id), eq(cuotas.estado, 'pendiente')))
+      .orderBy(asc(cuotas.numero));
+
+    const primera = pendientes[0];
+
+    if (!primera) {
+      throw conflict('Este credito no tiene cuotas pendientes por pagar');
+    }
+
+    /**
+     * El abono libre solo admite importes que cubran cuotas enteras. Aceptar un
+     * resto haria que el saldo del credito bajara por el monto completo mientras
+     * ese resto no se imputaria a ninguna cuota, y el plan de pagos quedaria
+     * descuadrado: quedarian cuotas "pendientes" que ya no suman el saldo y que
+     * despues no se podrian pagar de forma individual.
+     */
+    let acumulado = 0;
+    const aceptables: number[] = [];
+
+    for (const cuota of pendientes) {
+      const valor = Math.round(Number(cuota.monto) * 100) / 100;
+      acumulado = Math.round((acumulado + valor) * 100) / 100;
+      aceptables.push(acumulado);
+    }
+
+    const esValido = aceptables.some((valor) => Math.round((monto - valor) * 100) === 0);
+
+    if (!esValido) {
+      const valorPrimera = Math.round(Number(primera.monto) * 100) / 100;
+
+      if (monto < valorPrimera) {
+        throw badRequest(
+          `El abono debe ser de al menos ${formatearPesos(valorPrimera)}, el valor de la cuota pendiente mas antigua`,
+        );
+      }
+
+      // A igualdad de distancia se sugiere el importe mayor: si el usuario
+      // escribio de mas, lo util es completar las cuotas que faltan, no
+      // devolverle un numero mas pequeno que el que el mismo propuso.
+      const masCercano = aceptables.reduce((mejor, valor) => {
+        const distancia = Math.abs(valor - monto);
+        const distanciaMejor = Math.abs(mejor - monto);
+        const gana = distancia < distanciaMejor || (distancia === distanciaMejor && valor > mejor);
+        return gana ? valor : mejor;
+      });
+
+      throw badRequest(
+        `El abono debe cubrir cuotas completas. El importe mas cercano es ${formatearPesos(masCercano)}`,
       );
     }
   }

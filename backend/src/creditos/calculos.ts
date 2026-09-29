@@ -9,23 +9,15 @@ const DIAS_POR_PERIODO: Record<PeriodoPago, number> = {
   diario: 1,
   semanal: 7,
   quincenal: 15,
-  bisemanal: 14,
   mensual: 0,
 };
 
-export const PERIODOS_PAGO: PeriodoPago[] = [
-  'diario',
-  'semanal',
-  'quincenal',
-  'bisemanal',
-  'mensual',
-];
+export const PERIODOS_PAGO: PeriodoPago[] = ['diario', 'semanal', 'quincenal', 'mensual'];
 
 export const ETIQUETA_PERIODO: Record<PeriodoPago, string> = {
   diario: 'Diario',
   semanal: 'Semanal',
   quincenal: 'Quincenal',
-  bisemanal: 'Bisemanal',
   mensual: 'Mensual',
 };
 
@@ -47,9 +39,29 @@ export function sumarDias(iso: string, dias: number): string {
   return aIso(fecha);
 }
 
+/**
+ * Suma meses sin desbordar el final de mes.
+ *
+ * `setUTCMonth` con el dia original produce fechas que no existen: el 31 de
+ * enero + 1 mes pide el 31 de febrero, que JavaScript no resuelve a "fin de
+ * febrero" sino que se desborda al 3 de marzo, y el calendario de pagos queda
+ * corrido un mes entero. Primero se ancla en el dia 1 para sumar meses sin
+ * arrastre, y despues se vuelve al dia original, recortado al ultimo dia del
+ * mes destino cuando ese dia no existe.
+ */
 export function sumarMeses(iso: string, meses: number): string {
   const fecha = aFecha(iso);
+  const dia = fecha.getUTCDate();
+
+  fecha.setUTCDate(1);
   fecha.setUTCMonth(fecha.getUTCMonth() + meses);
+
+  const ultimoDiaDelMes = new Date(
+    Date.UTC(fecha.getUTCFullYear(), fecha.getUTCMonth() + 1, 0),
+  ).getUTCDate();
+
+  fecha.setUTCDate(Math.min(dia, ultimoDiaDelMes));
+
   return aIso(fecha);
 }
 
@@ -236,10 +248,15 @@ export function planCredito(input: ParametrosCredito): PlanCredito {
   let saldo = totalPagar;
 
   for (let i = 0; i < numeroPeriodos; i += 1) {
+    // El mensual se ancla en la fecha de inicio y no en la primera cuota: si se
+    // encadenara desde "primera", un credito del 31 quedaria clavado en el 28
+    // para siempre, porque ese dia fue el recorte del 31 de enero.
     const fechaVencimiento =
-      i === 0
-        ? primera
-        : ajustarDiaDeCobro(sumarPeriodos(primera, input.formaPago, i));
+      input.formaPago === 'mensual'
+        ? ajustarDiaDeCobro(sumarMeses(input.fechaInicio, i + 1))
+        : i === 0
+          ? primera
+          : ajustarDiaDeCobro(sumarPeriodos(primera, input.formaPago, i));
 
     const monto = montos[i] ?? 0;
     const saldoAnterior = redondearMoneda(saldo);

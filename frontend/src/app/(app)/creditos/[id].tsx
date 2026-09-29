@@ -34,6 +34,16 @@ import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { formatearFecha, formatearPesos, parsearPesos } from '@/utils/money';
 
+/**
+ * Las cuotas se pagan en orden y solo una a la vez: la que se puede pagar es la
+ * mas antigua pendiente, no la que vence este mes. Unica fuente de verdad para
+ * el boton de cada cuota y para la tarjeta de "Proxima a pagar", para que las
+ * dos no puedan discrepar.
+ */
+function proximaPagable(cuotas: Cuota[]): Cuota | null {
+  return cuotas.find((c) => c.estado !== 'pagada') ?? null;
+}
+
 export default function CreditoDetalleScreen() {
   const theme = useTheme();
   const router = useRouter();
@@ -200,6 +210,7 @@ export default function CreditoDetalleScreen() {
   }
 
   const bloqueado = credito?.estado === 'cerrado';
+  const proxima = credito ? proximaPagable(credito.cuotas) : null;
 
   return (
     <ThemedView style={styles.container}>
@@ -274,6 +285,47 @@ export default function CreditoDetalleScreen() {
                 </ThemedText>
               ) : null}
 
+              {/*
+                Se muestra antes del plan porque en creditos largos la cuota que
+                se puede pagar queda lejos de arriba y el cobrador no deberia
+                tener que recorrer cientos de filas para encontrarla.
+              */}
+              {proxima && !bloqueado ? (
+                <ThemedView type="backgroundElement" style={styles.cuota}>
+                  <ThemedText type="smallBold" themeColor="textSecondary">
+                    Próxima a pagar
+                  </ThemedText>
+                  <View style={styles.abonoEncabezado}>
+                    <ThemedText type="smallBold">
+                      Cuota {proxima.numero} de {credito.resumen.total}
+                    </ThemedText>
+                    <ThemedText type="smallBold">
+                      {formatearPesos(proxima.monto)}
+                    </ThemedText>
+                  </View>
+                  <View style={styles.abonoEncabezado}>
+                    <ThemedText type="small" themeColor="textSecondary">
+                      Vence {formatearFecha(proxima.fechaVencimiento)}
+                    </ThemedText>
+                    <ThemedText
+                      type="small"
+                      style={
+                        proxima.fechaVencimiento < credito.referencia
+                          ? styles.vencido
+                          : undefined
+                      }>
+                      {proxima.fechaVencimiento < credito.referencia
+                        ? 'Vencida'
+                        : 'Pendiente'}
+                    </ThemedText>
+                  </View>
+                  <Button
+                    title="Pagar esta cuota"
+                    onPress={() => abrirAbonoCuota(proxima)}
+                  />
+                </ThemedView>
+              ) : null}
+
               <ThemedText type="smallBold" style={styles.tituloAbonos}>
                 Plan de pagos
               </ThemedText>
@@ -309,7 +361,7 @@ export default function CreditoDetalleScreen() {
                               : 'Pendiente'}
                         </ThemedText>
                       </View>
-                      {!pagada && !bloqueado ? (
+                      {!pagada && !bloqueado && proxima?.id === cuota.id ? (
                         <Button
                           title="Pagar esta cuota"
                           variant="secundario"
@@ -395,7 +447,8 @@ export default function CreditoDetalleScreen() {
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.modalFondo}>
-          <ThemedView style={[styles.modalCaja, { backgroundColor: theme.background }]}>            <ScrollView contentContainerStyle={styles.modalContenido}>
+          <ThemedView style={[styles.modalCaja, { backgroundColor: theme.background }]}>
+            <ScrollView contentContainerStyle={styles.modalContenido}>
               <ScreenHeader
                 titulo={cuotaSeleccionada ? `Pagar cuota ${cuotaSeleccionada.numero}` : 'Nuevo abono'}
               />
@@ -411,8 +464,9 @@ export default function CreditoDetalleScreen() {
                 </ThemedView>
               ) : (
                 <ThemedText type="small" themeColor="textSecondary">
-                  El monto se aplicará a las cuotas pendientes más antiguas. Para pagar
-                  una cuota exacta usa el botón de su fila en el plan de pagos.
+                  El monto debe cubrir cuotas completas y se aplica a las pendientes más
+                  antiguas. Para pagar una cuota exacta usa el botón de su fila en el plan
+                  de pagos.
                 </ThemedText>
               )}
 
