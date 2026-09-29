@@ -1,11 +1,19 @@
 import { Redirect, Tabs } from 'expo-router';
-import { ActivityIndicator, StyleSheet, Text, View, type ColorValue } from 'react-native';
+import { ActivityIndicator, StyleSheet, View, type ColorValue } from 'react-native';
+
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 import { useSession } from '@/auth/session';
 import { useTheme } from '@/hooks/use-theme';
 
-function Icono({ children, color }: { children: string; color: ColorValue }) {
-  return <Text style={{ fontSize: 20, color }}>{children}</Text>;
+function Icono({
+  nombre,
+  color,
+}: {
+  nombre: keyof typeof MaterialCommunityIcons.glyphMap;
+  color: ColorValue;
+}) {
+  return <MaterialCommunityIcons name={nombre} size={24} color={color} />;
 }
 
 export default function AppLayout() {
@@ -39,28 +47,28 @@ export default function AppLayout() {
         name="index"
         options={{
           title: 'Inicio',
-          tabBarIcon: ({ color }) => <Icono color={color}>◎</Icono>,
+          tabBarIcon: ({ color }) => <Icono nombre="home-variant-outline" color={color} />,
         }}
       />
       <Tabs.Screen
         name="creditos"
         options={{
           title: 'Crédito',
-          tabBarIcon: ({ color }) => <Icono color={color}>＄</Icono>,
+          tabBarIcon: ({ color }) => <Icono nombre="wallet-outline" color={color} />,
         }}
       />
       <Tabs.Screen
         name="clientes"
         options={{
           title: 'Cliente',
-          tabBarIcon: ({ color }) => <Icono color={color}>☺</Icono>,
+          tabBarIcon: ({ color }) => <Icono nombre="account-group-outline" color={color} />,
         }}
       />
       <Tabs.Screen
         name="abonos"
         options={{
           title: 'Abono',
-          tabBarIcon: ({ color }) => <Icono color={color}>✓</Icono>,
+          tabBarIcon: ({ color }) => <Icono nombre="trending-up" color={color} />,
         }}
       />
       {esAdmin ? (
@@ -68,7 +76,7 @@ export default function AppLayout() {
           name="usuarios"
           options={{
             title: 'Operadores',
-            tabBarIcon: ({ color }) => <Icono color={color}>⚙</Icono>,
+            tabBarIcon: ({ color }) => <Icono nombre="shield-account-outline" color={color} />,
           }}
         />
       ) : (

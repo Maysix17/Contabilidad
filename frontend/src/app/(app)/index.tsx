@@ -10,6 +10,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+
 import {
   ApiError,
   getIndicadores,
@@ -18,7 +20,6 @@ import {
   type TopDeudor,
 } from '@/api/client';
 import { useSession } from '@/auth/session';
-import { ScreenHeader } from '@/components/screen-header';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import {
@@ -30,13 +31,11 @@ import {
   Tarjeta,
   Vacio,
 } from '@/components/ui-cards';
-import { MaxContentWidth, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { MaxContentWidth, Pastel, Spacing } from '@/constants/theme';
 import { formatearFecha, formatearPesos } from '@/utils/money';
 
 export default function InicioScreen() {
   const router = useRouter();
-  const theme = useTheme();
   const { user, esAdmin } = useSession();
   const [datos, setDatos] = useState<{
     indicadores: Indicadores;
@@ -72,28 +71,29 @@ export default function InicioScreen() {
   }
 
   const ind = datos?.indicadores;
-  const iniciales = (user?.nombre ?? '?').trim().charAt(0).toUpperCase();
+  const tonoRol = esAdmin ? 'violeta' : 'teal';
 
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <ScreenHeader
-          titulo={`Hola, ${user?.nombre ?? ''}`.trim()}
-          subtitulo={fechaLarga()}
-          derecha={
-            <Pressable
-              onPress={() => router.push('/perfil')}
-              style={[
-                styles.perfil,
-                { backgroundColor: theme.backgroundElement, borderColor: theme.textSecondary },
-              ]}>
-              <ThemedText type="smallBold">{iniciales}</ThemedText>
-              <ThemedText type="small" themeColor="textSecondary">
-                {esAdmin ? 'Admin' : 'Operador'}
-              </ThemedText>
-            </Pressable>
-          }
-        />
+        <View style={styles.saludo}>
+          <ThemedText type="subtitle">Hola, {user?.nombre ?? ''}</ThemedText>
+          <Pressable
+            onPress={() => router.push('/perfil')}
+            style={({ pressed }) => [
+              styles.rol,
+              { backgroundColor: Pastel[tonoRol].superficie },
+              pressed && styles.rolPulsado,
+            ]}>
+            <ThemedText type="smallBold" style={{ color: Pastel[tonoRol].texto }}>
+              {esAdmin ? 'Admin' : 'Operador'}
+            </ThemedText>
+            <MaterialCommunityIcons name="chevron-right" size={14} color={Pastel[tonoRol].texto} />
+          </Pressable>
+        </View>
+        <ThemedText type="small" themeColor="textSecondary">
+          {fechaLarga()}
+        </ThemedText>
 
         <ScrollView
           contentContainerStyle={styles.content}
@@ -117,8 +117,9 @@ export default function InicioScreen() {
                 detalle={`${ind.creditosActivos} ${
                   ind.creditosActivos === 1 ? 'crédito activo' : 'créditos activos'
                 }`}
+                icono="wallet-outline"
+                tono="azul"
                 valorType="valor"
-                destacado
               />
 
               <View style={styles.grid}>
@@ -126,7 +127,8 @@ export default function InicioScreen() {
                   titulo="Clientes en mora"
                   valor={String(ind.clientesEnMora)}
                   detalle={`${formatearPesos(ind.saldoVencido)} vencidos`}
-                  color={ind.clientesEnMora > 0 ? '#DC2626' : undefined}
+                  icono="account-alert-outline"
+                  tono={ind.clientesEnMora > 0 ? 'rojo' : 'neutro'}
                   style={styles.celda}
                 />
                 <StatCard
@@ -135,6 +137,8 @@ export default function InicioScreen() {
                   detalle={`${ind.creditosFinalizados} ${
                     ind.creditosFinalizados === 1 ? 'finalizado' : 'finalizados'
                   }`}
+                  icono="trending-up"
+                  tono="verde"
                   style={styles.celda}
                 />
                 <StatCard
@@ -143,6 +147,8 @@ export default function InicioScreen() {
                   detalle={`${ind.creditosCerrados} ${
                     ind.creditosCerrados === 1 ? 'cerrado' : 'cerrados'
                   }`}
+                  icono="account-group-outline"
+                  tono="violeta"
                   style={styles.celda}
                 />
               </View>
@@ -160,7 +166,7 @@ export default function InicioScreen() {
               ) : null}
 
               <View style={styles.bloque}>
-                <SectionHeader titulo="Mayor saldo pendiente" />
+                <SectionHeader titulo="Mayor saldo pendiente" icono="account-star-outline" />
 
                 {datos.topDeudores.length === 0 ? (
                   <Tarjeta>
@@ -189,7 +195,7 @@ export default function InicioScreen() {
               </View>
 
               <View style={styles.bloque}>
-                <SectionHeader titulo="Próximos vencimientos" />
+                <SectionHeader titulo="Próximos vencimientos" icono="calendar-alert" />
 
                 {datos.proximosVencimientos.length === 0 ? (
                   <Tarjeta>
@@ -232,14 +238,21 @@ function fechaLarga(): string {
 }
 
 const styles = StyleSheet.create({
-  perfil: {
+  saludo: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    width: 56,
-    height: 44,
-    borderRadius: Spacing.two,
-    borderWidth: StyleSheet.hairlineWidth,
+    gap: Spacing.two,
+    marginTop: Spacing.three,
   },
+  rol: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingHorizontal: Spacing.two,
+    paddingVertical: 3,
+    borderRadius: Spacing.two,
+  },
+  rolPulsado: { opacity: 0.6 },
   container: { flex: 1 },
   safeArea: {
     flex: 1,

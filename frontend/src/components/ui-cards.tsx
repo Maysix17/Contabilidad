@@ -1,10 +1,14 @@
 import { type ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+
 import { ThemedText, type ThemedTextType } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
+import { Pastel, Spacing, type NombrePastel } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+
+type NombreIcono = keyof typeof MaterialCommunityIcons.glyphMap;
 
 /**
  * Contenedor base de las tarjetas de la app. Reemplaza al patron repetido de
@@ -18,30 +22,39 @@ export function Tarjeta({
 }: {
   children: ReactNode;
   style?: object;
-  tono?: 'normal' | 'tint';
+  tono?: NombrePastel;
 }) {
-  const theme = useTheme();
-
   return (
     <ThemedView
       type="backgroundElement"
-      style={[
-        styles.tarjeta,
-        tono === 'tint' ? { backgroundColor: `${theme.tint}14` } : null,
-        style,
-      ]}>
+      style={[styles.tarjeta, tono ? { backgroundColor: Pastel[tono].superficie } : null, style]}>
       {children}
     </ThemedView>
   );
 }
 
 /** Rotulo de seccion. Mayuscula y espaciada, nunca compite con las cifras. */
-export function SectionHeader({ titulo, accion }: { titulo: string; accion?: ReactNode }) {
+export function SectionHeader({
+  titulo,
+  icono,
+  accion,
+}: {
+  titulo: string;
+  icono?: NombreIcono;
+  accion?: ReactNode;
+}) {
+  const theme = useTheme();
+
   return (
     <View style={styles.sectionHeader}>
-      <ThemedText type="eyebrow" themeColor="textSecondary">
-        {titulo}
-      </ThemedText>
+      <View style={styles.sectionTitulo}>
+        {icono ? (
+          <MaterialCommunityIcons name={icono} size={14} color={theme.textSecondary} />
+        ) : null}
+        <ThemedText type="eyebrow" themeColor="textSecondary">
+          {titulo}
+        </ThemedText>
+      </View>
       {accion}
     </View>
   );
@@ -51,31 +64,42 @@ export function StatCard({
   titulo,
   valor,
   detalle,
-  color,
+  icono,
+  tono,
   valorType = 'h2',
-  destacado = false,
   style,
 }: {
   titulo: string;
   valor: string;
   detalle?: string;
-  color?: string;
+  icono?: NombreIcono;
+  tono?: NombrePastel;
   valorType?: ThemedTextType;
-  destacado?: boolean;
   style?: object;
 }) {
+  const matiz = tono ? Pastel[tono] : null;
+
   return (
-    <Tarjeta
-      style={[styles.card, style]}
-      tono={destacado ? 'tint' : 'normal'}>
-      <ThemedText type="eyebrow" themeColor="textSecondary">
+    <Tarjeta style={[styles.card, style]} tono={tono}>
+      {tono && icono ? (
+        <View style={[styles.botonIcono, { backgroundColor: matiz?.solido }]}>
+          <MaterialCommunityIcons name={icono} size={16} color={matiz?.texto} />
+        </View>
+      ) : null}
+      <ThemedText
+        type="eyebrow"
+        themeColor={matiz ? undefined : 'textSecondary'}
+        style={matiz ? { color: `${matiz.texto}C0` } : undefined}>
         {titulo}
       </ThemedText>
-      <ThemedText type={valorType} style={color ? { color } : undefined}>
+      <ThemedText type={valorType} style={matiz ? { color: matiz.texto } : undefined}>
         {valor}
       </ThemedText>
       {detalle ? (
-        <ThemedText type="small" themeColor="textSecondary">
+        <ThemedText
+          type="small"
+          themeColor={matiz ? undefined : 'textSecondary'}
+          style={matiz ? { color: `${matiz.texto}C0` } : undefined}>
           {detalle}
         </ThemedText>
       ) : null}
@@ -90,17 +114,13 @@ const ETIQUETAS_ESTADO: Record<string, string> = {
 };
 
 export function EstadoBadge({ estado }: { estado: string }) {
-  const theme = useTheme();
-
-  const colores: Record<string, string> = {
-    activo: '#208AEF',
-    finalizado: '#16A34A',
-    cerrado: theme.textSecondary,
-  };
+  const tono: NombrePastel =
+    estado === 'activo' ? 'verde' : estado === 'finalizado' ? 'azul' : 'neutro';
+  const matiz = Pastel[tono];
 
   return (
-    <View style={[styles.badge, { backgroundColor: `${colores[estado] ?? theme.textSecondary}22` }]}>
-      <ThemedText type="smallBold" style={{ color: colores[estado] ?? theme.textSecondary }}>
+    <View style={[styles.badge, { backgroundColor: matiz.superficie }]}>
+      <ThemedText type="smallBold" style={{ color: matiz.texto }}>
         {ETIQUETAS_ESTADO[estado] ?? estado}
       </ThemedText>
     </View>
@@ -207,23 +227,24 @@ export function Aviso({
   mensaje,
   accion,
   onPress,
-  color = '#B45309',
+  tono = 'ambar',
 }: {
   mensaje: string;
   accion?: string;
   onPress?: () => void;
-  color?: string;
+  tono?: NombrePastel;
 }) {
+  const matiz = Pastel[tono];
+
   return (
-    <Tarjeta>
+    <Tarjeta tono={tono} style={styles.avisoTarjeta}>
       <Pressable onPress={onPress} style={styles.aviso}>
-        <ThemedText type="smallBold" style={{ color, flexShrink: 1 }}>
+        <MaterialCommunityIcons name="alert-outline" size={18} color={matiz.texto} />
+        <ThemedText type="smallBold" style={{ color: matiz.texto, flexShrink: 1 }}>
           {mensaje}
         </ThemedText>
         {accion ? (
-          <ThemedText type="smallBold" style={{ color }}>
-            {accion} →
-          </ThemedText>
+          <MaterialCommunityIcons name="chevron-right" size={18} color={matiz.texto} />
         ) : null}
       </Pressable>
     </Tarjeta>
@@ -241,8 +262,24 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: Spacing.two,
   },
+  sectionTitulo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.one,
+  },
   card: {
     gap: Spacing.one,
+  },
+  botonIcono: {
+    width: 28,
+    height: 28,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.one,
+  },
+  avisoTarjeta: {
+    padding: Spacing.three,
   },
   badge: {
     alignSelf: 'flex-start',
