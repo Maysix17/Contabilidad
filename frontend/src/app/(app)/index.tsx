@@ -1,19 +1,40 @@
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { ApiError, getIndicadores, type Indicadores, type ProximoVencimiento, type TopDeudor } from '@/api/client';
+import {
+  ApiError,
+  getIndicadores,
+  type Indicadores,
+  type ProximoVencimiento,
+  type TopDeudor,
+} from '@/api/client';
 import { useSession } from '@/auth/session';
 import { ScreenHeader } from '@/components/screen-header';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { ErrorBox, FilaDato, StatCard, Vacio } from '@/components/ui-cards';
+import {
+  Aviso,
+  ErrorBox,
+  FilaLista,
+  SectionHeader,
+  StatCard,
+  Tarjeta,
+  Vacio,
+} from '@/components/ui-cards';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { formatearFecha, formatearPesos } from '@/utils/money';
 
-export default function PanelScreen() {
+export default function InicioScreen() {
   const router = useRouter();
   const theme = useTheme();
   const { user, esAdmin } = useSession();
@@ -29,7 +50,9 @@ export default function PanelScreen() {
   const cargar = useCallback(async (refrescar = false) => {
     try {
       setDatos(await getIndicadores());
+      setError(null);
     } catch (cause) {
+      setDatos(null);
       setError(cause instanceof ApiError ? cause.message : 'No se pudieron cargar los indicadores');
     } finally {
       setCargando(false);
@@ -49,13 +72,14 @@ export default function PanelScreen() {
   }
 
   const ind = datos?.indicadores;
+  const iniciales = (user?.nombre ?? '?').trim().charAt(0).toUpperCase();
 
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <ScreenHeader
-          titulo="Panel"
-          subtitulo={`Hola, ${user?.nombre ?? ''}`}
+          titulo={`Hola, ${user?.nombre ?? ''}`.trim()}
+          subtitulo={fechaLarga()}
           derecha={
             <Pressable
               onPress={() => router.push('/perfil')}
@@ -63,9 +87,9 @@ export default function PanelScreen() {
                 styles.perfil,
                 { backgroundColor: theme.backgroundElement, borderColor: theme.textSecondary },
               ]}>
-              <ThemedText type="smallBold">{user?.cedula ?? '—'}</ThemedText>
+              <ThemedText type="smallBold">{iniciales}</ThemedText>
               <ThemedText type="small" themeColor="textSecondary">
-                {esAdmin ? 'Administrador' : 'Operador'}
+                {esAdmin ? 'Admin' : 'Operador'}
               </ThemedText>
             </Pressable>
           }
@@ -81,115 +105,113 @@ export default function PanelScreen() {
 
           {ind ? (
             <>
+              {/*
+                Una sola cifra protagonista a ancho completo. Antes las cuatro
+                tarjetas tenian el mismo peso y no habia forma de saber cual
+                mirar primero; ademas el monto se pintaba a 32 px y no cabia en
+                media pantalla.
+              */}
+              <StatCard
+                titulo="Saldo por cobrar"
+                valor={formatearPesos(ind.saldoPorCobrar)}
+                detalle={`${ind.creditosActivos} ${
+                  ind.creditosActivos === 1 ? 'crédito activo' : 'créditos activos'
+                }`}
+                valorType="valor"
+                destacado
+              />
+
               <View style={styles.grid}>
                 <StatCard
-                  titulo="Saldo por cobrar"
-                  valor={formatearPesos(ind.saldoPorCobrar)}
-                  detalle={`${ind.creditosActivos} créditos activos`}
+                  titulo="Clientes en mora"
+                  valor={String(ind.clientesEnMora)}
+                  detalle={`${formatearPesos(ind.saldoVencido)} vencidos`}
+                  color={ind.clientesEnMora > 0 ? '#DC2626' : undefined}
+                  style={styles.celda}
                 />
                 <StatCard
                   titulo="Abonos del mes"
                   valor={formatearPesos(ind.abonosDelMes)}
-                  detalle={`${ind.creditosFinalizados} créditos finalizados`}
+                  detalle={`${ind.creditosFinalizados} ${
+                    ind.creditosFinalizados === 1 ? 'finalizado' : 'finalizados'
+                  }`}
+                  style={styles.celda}
                 />
                 <StatCard
                   titulo="Clientes"
                   valor={String(ind.clientesActivos)}
-                  detalle={`${ind.creditosCerrados} créditos cerrados`}
-                />
-                <StatCard
-                  titulo="Vencidos"
-                  valor={String(ind.clientesEnMora)}
-                  detalle={`${ind.cuotasAtrasadas} cuotas · ${formatearPesos(ind.saldoVencido)}`}
-                  color={ind.clientesEnMora > 0 ? '#DC2626' : undefined}
+                  detalle={`${ind.creditosCerrados} ${
+                    ind.creditosCerrados === 1 ? 'cerrado' : 'cerrados'
+                  }`}
+                  style={styles.celda}
                 />
               </View>
 
               {ind.cuotasAtrasadas > 0 ? (
-                <ThemedView type="backgroundElement" style={styles.aviso}>
-                  <ThemedText type="smallBold" style={{ color: '#B45309' }}>
-                    {ind.cuotasAtrasadas}{' '}
-                    {ind.cuotasAtrasadas === 1 ? 'cuota vencida' : 'cuotas vencidas'} en{' '}
-                    {ind.clientesEnMora}{' '}
-                    {ind.clientesEnMora === 1 ? 'crédito' : 'créditos'}
-                  </ThemedText>
-                </ThemedView>
+                <Aviso
+                  mensaje={`${ind.cuotasAtrasadas} ${
+                    ind.cuotasAtrasadas === 1 ? 'cuota vencida' : 'cuotas vencidas'
+                  } en ${ind.clientesEnMora} ${
+                    ind.clientesEnMora === 1 ? 'crédito' : 'créditos'
+                  }`}
+                  accion="Ver abonos"
+                  onPress={() => router.push('/abonos')}
+                />
               ) : null}
 
               <View style={styles.bloque}>
-                <ThemedText type="smallBold">Mayor saldo pendiente</ThemedText>
+                <SectionHeader titulo="Mayor saldo pendiente" />
+
                 {datos.topDeudores.length === 0 ? (
-                  <Vacio mensaje="No hay créditos activos" />
+                  <Tarjeta>
+                    <Vacio mensaje="No hay créditos activos" />
+                  </Tarjeta>
                 ) : (
-                  datos.topDeudores.map((deudor) => (
-                    <Pressable
-                      key={deudor.creditoId}
-                      onPress={() => router.push(`/creditos/${deudor.creditoId}`)}
-                      style={styles.fila}>
-                      <View style={styles.filaTexto}>
-                        <ThemedText type="smallBold">
-                          {deudor.nombre} {deudor.apellido}
-                        </ThemedText>
-                        <ThemedText type="small" themeColor="textSecondary">
-                          Doc. {deudor.documento}
-                        </ThemedText>
-                      </View>
-                      <View style={styles.filaValores}>
-                        <ThemedText type="smallBold">
-                          {formatearPesos(deudor.saldo)}
-                        </ThemedText>
-                        <ThemedText
-                          type="small"
-                          style={{
-                            color: deudor.cuotasAtrasadas > 0 ? '#DC2626' : undefined,
-                          }}>
-                          {deudor.cuotasAtrasadas > 0
+                  <Tarjeta style={styles.lista}>
+                    {datos.topDeudores.map((deudor, indice) => (
+                      <FilaLista
+                        key={deudor.creditoId}
+                        titulo={`${deudor.nombre} ${deudor.apellido}`}
+                        subtitulo={`Doc. ${deudor.documento}`}
+                        valor={formatearPesos(deudor.saldo)}
+                        nota={
+                          deudor.cuotasAtrasadas > 0
                             ? `${deudor.cuotasAtrasadas} vencidas`
-                            : `Cuota ${formatearPesos(deudor.valorCuota)}`}
-                        </ThemedText>
-                      </View>
-                    </Pressable>
-                  ))
+                            : `Cuota ${formatearPesos(deudor.valorCuota)}`
+                        }
+                        valorColor={deudor.cuotasAtrasadas > 0 ? '#DC2626' : undefined}
+                        onPress={() => router.push(`/creditos/${deudor.creditoId}`)}
+                        separador={indice < datos.topDeudores.length - 1}
+                      />
+                    ))}
+                  </Tarjeta>
                 )}
               </View>
 
               <View style={styles.bloque}>
-                <ThemedText type="smallBold">Próximos vencimientos</ThemedText>
+                <SectionHeader titulo="Próximos vencimientos" />
+
                 {datos.proximosVencimientos.length === 0 ? (
-                  <Vacio mensaje="Sin vencimientos programados" />
+                  <Tarjeta>
+                    <Vacio mensaje="Sin vencimientos programados" />
+                  </Tarjeta>
                 ) : (
-                  datos.proximosVencimientos.map((item) => (
-                    <Pressable
-                      key={item.creditoId}
-                      onPress={() => router.push(`/creditos/${item.creditoId}`)}
-                      style={styles.vencimiento}>
-                      <FilaDato
-                        etiqueta={`${item.cliente} · cuota`}
-                        valor={formatearPesos(item.valorCuota)}
-                      />
-                      <FilaDato
-                        etiqueta="Vence"
-                        valor={formatearFecha(item.fechaVencimiento)}
-                      />
-                      <FilaDato
-                        etiqueta="Saldo"
+                  <Tarjeta style={styles.lista}>
+                    {datos.proximosVencimientos.map((item, indice) => (
+                      <FilaLista
+                        key={item.creditoId}
+                        titulo={item.cliente}
+                        subtitulo={`Cuota ${formatearPesos(item.valorCuota)} · vence ${formatearFecha(
+                          item.fechaVencimiento,
+                        )}`}
                         valor={formatearPesos(item.saldo)}
+                        onPress={() => router.push(`/creditos/${item.creditoId}`)}
+                        separador={indice < datos.proximosVencimientos.length - 1}
                       />
-                    </Pressable>
-                  ))
+                    ))}
+                  </Tarjeta>
                 )}
               </View>
-
-              {esAdmin ? (
-                <ThemedText type="small" themeColor="textSecondary">
-                  Tienes permisos de administrador: puedes cerrar y eliminar registros.
-                </ThemedText>
-              ) : (
-                <ThemedText type="small" themeColor="textSecondary">
-                  Operador: puedes registrar clientes, créditos y abonos, pero no cerrar ni
-                  eliminar.
-                </ThemedText>
-              )}
             </>
           ) : null}
         </ScrollView>
@@ -198,11 +220,23 @@ export default function PanelScreen() {
   );
 }
 
+/** Fecha en espanol, construida con las partes locales para no correr de dia. */
+function fechaLarga(): string {
+  const ahora = new Date();
+
+  return new Intl.DateTimeFormat('es-CO', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  }).format(ahora);
+}
+
 const styles = StyleSheet.create({
   perfil: {
-    alignItems: 'flex-end',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 56,
+    height: 44,
     borderRadius: Spacing.two,
     borderWidth: StyleSheet.hairlineWidth,
   },
@@ -224,25 +258,14 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: Spacing.two,
   },
-  aviso: {
-    borderRadius: Spacing.three,
-    padding: Spacing.three,
+  celda: {
+    flexGrow: 1,
+    flexBasis: '47%',
   },
   bloque: {
     gap: Spacing.two,
   },
-  fila: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: Spacing.three,
-    paddingVertical: Spacing.two,
-  },
-  filaTexto: { flexShrink: 1, gap: 2 },
-  filaValores: { alignItems: 'flex-end', gap: 2 },
-  vencimiento: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#8888',
-    paddingBottom: Spacing.two,
+  lista: {
+    paddingVertical: Spacing.one,
   },
 });

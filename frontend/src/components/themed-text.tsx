@@ -3,8 +3,21 @@ import { Platform, StyleSheet, Text, type TextProps } from 'react-native';
 import { Fonts, ThemeColor } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
+export type ThemedTextType =
+  | 'default'
+  | 'title'
+  | 'small'
+  | 'smallBold'
+  | 'subtitle'
+  | 'valor'
+  | 'h2'
+  | 'eyebrow'
+  | 'link'
+  | 'linkPrimary'
+  | 'code';
+
 export type ThemedTextProps = TextProps & {
-  type?: 'default' | 'title' | 'small' | 'smallBold' | 'subtitle' | 'link' | 'linkPrimary' | 'code';
+  type?: ThemedTextType;
   themeColor?: ThemeColor;
 };
 
@@ -20,6 +33,9 @@ export function ThemedText({ style, type = 'default', themeColor, ...rest }: The
         type === 'small' && styles.small,
         type === 'smallBold' && styles.smallBold,
         type === 'subtitle' && styles.subtitle,
+        type === 'valor' && styles.valor,
+        type === 'h2' && styles.h2,
+        type === 'eyebrow' && styles.eyebrow,
         type === 'link' && styles.link,
         type === 'linkPrimary' && styles.linkPrimary,
         type === 'code' && styles.code,
@@ -30,6 +46,13 @@ export function ThemedText({ style, type = 'default', themeColor, ...rest }: The
   );
 }
 
+/**
+ * Escala unica para toda la app. Antes `subtitle` valia 32 px y se usaba tanto
+ * para el titulo de pantalla como para las cifras de las tarjetas, y eso hacia
+ * que un monto como $ 12.480.000 no entrara en una tarjeta de media pantalla.
+ * La jerarquia va de `valor` (cifra protagonista) a `eyebrow` (rotulo de
+ * seccion), con `subtitle` como titulo de pantalla.
+ */
 const styles = StyleSheet.create({
   small: {
     fontSize: 14,
@@ -52,9 +75,26 @@ const styles = StyleSheet.create({
     lineHeight: 52,
   },
   subtitle: {
-    fontSize: 32,
-    lineHeight: 44,
-    fontWeight: 600,
+    fontSize: 24,
+    lineHeight: 30,
+    fontWeight: 700,
+  },
+  valor: {
+    fontSize: 28,
+    lineHeight: 34,
+    fontWeight: 700,
+  },
+  h2: {
+    fontSize: 20,
+    lineHeight: 26,
+    fontWeight: 700,
+  },
+  eyebrow: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: 700,
+    letterSpacing: 0.9,
+    textTransform: 'uppercase',
   },
   link: {
     lineHeight: 30,
