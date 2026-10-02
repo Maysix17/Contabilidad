@@ -127,6 +127,38 @@ export function EstadoBadge({ estado }: { estado: string }) {
   );
 }
 
+const ETIQUETAS_RUTA: Record<string, string> = {
+  pendiente: 'Sin empezar',
+  abierta: 'Abierta',
+  en_proceso: 'En proceso',
+  cerrada: 'Cerrada',
+};
+
+/**
+ * El estado de una ruta se lee de un vistazo: lo que esta por empezar es neutro,
+ * lo que ya empezo va en azul o ambar segun como va, y cerrada es verde. Usa los
+ * mismos pasteles que el resto de la app, no colores sueltos.
+ */
+export function EstadoBadgeRuta({ estado }: { estado: string }) {
+  const tono: NombrePastel =
+    estado === 'pendiente'
+      ? 'neutro'
+      : estado === 'abierta'
+        ? 'azul'
+        : estado === 'en_proceso'
+          ? 'ambar'
+          : 'verde';
+  const matiz = Pastel[tono];
+
+  return (
+    <View style={[styles.badge, { backgroundColor: matiz.superficie }]}>
+      <ThemedText type="smallBold" style={{ color: matiz.texto }}>
+        {ETIQUETAS_RUTA[estado] ?? estado}
+      </ThemedText>
+    </View>
+  );
+}
+
 export function Vacio({ mensaje }: { mensaje: string }) {
   return (
     <View style={styles.vacio}>

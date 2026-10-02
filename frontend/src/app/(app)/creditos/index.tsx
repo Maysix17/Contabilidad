@@ -1,5 +1,5 @@
 import { Link } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -19,6 +19,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { ErrorBox, EstadoBadge, Vacio } from '@/components/ui-cards';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { useRefresco } from '@/hooks/use-refresco';
 import { useTheme } from '@/hooks/use-theme';
 import { formatearFecha, formatearPesos } from '@/utils/money';
 
@@ -39,7 +40,7 @@ export default function CreditosScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const cargar = useCallback(
-    async (texto: string, estado: EstadoCredito | 'todos', refrescar = false) => {
+    async (texto: string, estado: EstadoCredito | 'todos') => {
       try {
         setCreditos(
           await listCreditos({
@@ -49,26 +50,35 @@ export default function CreditosScreen() {
         );
         setError(null);
       } catch (cause) {
+        // Sin vaciar la lista, un error de red dejaba el listado anterior
+        // conviveciendo con el aviso, como si esos datos siguieran siendo
+        // ciertos despues de un fallo.
+        setCreditos([]);
         setError(
           cause instanceof ApiError ? cause.message : 'No se pudieron cargar los créditos',
         );
       } finally {
         setCargando(false);
       }
-
-      if (refrescar) setRefrescando(false);
     },
     [],
   );
 
-  useEffect(() => {
-    const timer = setTimeout(() => void cargar(search, filtro), search ? 400 : 0);
-    return () => clearTimeout(timer);
-  }, [cargar, search, filtro]);
+  /**
+   * Saldo, estado y cuotas pagadas cambian desde la pantalla de detalle. Al
+   * volver de cobrar, cerrar o eliminar un credito, esta lista seguia mostrando
+   * el estado anterior: un credito cerrado aparecia todavia como activo y uno
+   * borrado no desaparecia de la lista.
+   */
+  useRefresco(
+    useCallback(() => void cargar(search, filtro), [cargar, search, filtro]),
+    search ? 400 : 0,
+  );
 
   async function refrescar() {
     setRefrescando(true);
-    await cargar(search, filtro, true);
+    await cargar(search, filtro);
+    setRefrescando(false);
   }
 
   return (

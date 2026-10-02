@@ -77,6 +77,13 @@ export async function loginUser(input: {
     throw unauthorized('Cedula o contrasena incorrectos');
   }
 
+  /**
+   * Un login es el momento natural para limpiar: ya se esta usando la base, y
+   * de paso no se corre el borrado si no hay trafico. Si falla, el login igual
+   * continua; la tabla se limpia en el proximo.
+   */
+  void purgeExpiredTokens().catch(() => undefined);
+
   const { token, tokenHash } = createRefreshToken();
   await db.insert(tokensRefresh).values({
     usuarioId: user.id,

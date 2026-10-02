@@ -7,6 +7,7 @@ const STORAGE_KEY = 'contabilidad.sesion';
 export type RolUsuario = 'administrador' | 'operador';
 export type PeriodoPago = 'diario' | 'semanal' | 'quincenal' | 'mensual';
 export type EstadoCredito = 'activo' | 'finalizado' | 'cerrado';
+export type EstadoRuta = 'pendiente' | 'abierta' | 'en_proceso' | 'cerrada';
 
 export interface SessionUser {
   id: string;
@@ -48,6 +49,19 @@ export interface ClienteInput {
   telefono?: string | null;
   direccion2?: string | null;
   ciudad?: string | null;
+}
+
+/**
+ * Da de baja al cliente sin perder su historial: deja de recibir creditos y de
+ * aparecer en el cobro, pero los creditos y abonos que ya tiene siguen
+ * existiendo y contando en los indicadores.
+ */
+export async function desactivarCliente(id: string): Promise<Cliente> {
+  const result = await request<{ cliente: Cliente }>(`/api/clientes/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ activo: false }),
+  });
+  return result.cliente;
 }
 
 /** Cliente con su credito activo, tal como lo devuelve la pestaña de abonos. */
@@ -124,6 +138,7 @@ export interface Abono {
   saldoAnterior: string;
   saldoDespues: string;
   registradoPor: string;
+  rutaId: string | null;
   anuladoEn: string | null;
   anuladoPor: string | null;
   motivoAnulacion: string | null;
@@ -296,6 +311,23 @@ export async function listClientesPorCobrar(search?: string): Promise<ClientePor
   return result.clientes;
 }
 
+/**
+ * Cliente puntual. Existe `GET /clientes/:id`, y usarlo evita descargar el
+ * listado completo (que llega a 200 filas) solo para buscar una.
+ *
+ * Devuelve `null` cuando ya no existe, en vez de lanzar: la pantalla de detalle
+ * necesita distinguir "no existe" de "no se pudo cargar".
+ */
+export async function getCliente(id: string): Promise<Cliente | null> {
+  try {
+    const result = await request<{ cliente: Cliente }>(`/api/clientes/${id}`);
+    return result.cliente;
+  } catch (cause) {
+    if (cause instanceof ApiError && cause.status === 404) return null;
+    throw cause;
+  }
+}
+
 export async function createCliente(input: ClienteInput): Promise<Cliente> {
   const result = await request<{ cliente: Cliente }>('/api/clientes', {
     method: 'POST',
@@ -424,12 +456,16 @@ export interface AbonoResultado {
  * `cuotaId` es opcional: si se envia, el abono se aplica exactamente a esa
  * cuota y el monto debe coincidir. Si se omite, el backend reparte el abono
  * sobre las cuotas pendientes mas antiguas.
+ *
+ * `rutaId` tambien es opcional: se envia cuando el abono se registra desde
+ * dentro de una ruta, y es lo que permite despues saber en que visita se cobro.
  */
 export async function registrarAbono(
   creditoId: string,
   input: {
     monto: number;
     cuotaId?: string | null;
+    rutaId?: string | null;
     fecha?: string;
     referencia?: string | null;
     observaciones?: string | null;
@@ -449,6 +485,126 @@ export async function anularAbono(
     method: 'POST',
     body: JSON.stringify({ motivo }),
   });
+}
+
+/* --------------------------------- rutas --------------------------------- */
+
+/**
+ * Un cliente que se puede cobrar en una fecha. Es una fila por cliente, no por
+ * cuota: un cliente que debe tres cuotas aparece una vez y `totalVencido` es la
+ * suma de las tres, que es lo que el operador realmente va a cobrar.
+ */
+export interface ClienteVigente {
+  clienteId: string;
+  nombre: string;
+  apellido: string;
+  documento: string;
+  direccion: string;
+  celular: string;
+  creditoId: string;
+  saldo: number;
+  valorCuota: number;
+  totalVencido: number;
+  cuotasPendientes: number;
+  atrasadas: number;
+  vencimientoMasAntiguo: string;
+}
+
+export interface VigentesRespuesta {
+  fecha: string;
+  pendientes: ClienteVigente[];
+  resumen: { clientes: number; porCobrar: number; conAtraso: number };
+}
+
+export interface Ruta {
+  id: string;
+  nombre: string;
+  operadorId: string;
+  fecha: string;
+  estado: EstadoRuta;
+  abiertaEn: string | null;
+  cerradaEn: string | null;
+  observaciones: string | null;
+  creadoPor: string;
+  creadoEn: string;
+  actualizadoEn: string;
+  operador: { id: string; nombre: string; cedula: string };
+}
+
+export interface RutaListada extends Ruta {
+  clientes: number;
+  cobrado: number;
+  abonos: number;
+}
+
+export interface ClienteEnRuta {
+  orden: number;
+  cliente: {
+    id: string;
+    nombre: string;
+    apellido: string;
+    documento: string;
+    direccion: string;
+    celular: string;
+  };
+  creditoId: string | null;
+  saldo: number;
+  valorCuota: number;
+  cobrado: number;
+  abonos: number;
+}
+
+export interface RutaDetalle extends Ruta {
+  clientes: ClienteEnRuta[];
+}
+
+/** Alimenta la pantalla de nueva ruta: a quien se puede cobrar ese dia. */
+export async function listVigentes(fecha?: string): Promise<VigentesRespuesta> {
+  const query = fecha ? `?fecha=${encodeURIComponent(fecha)}` : '';
+  return request<VigentesRespuesta>(`/api/rutas/vigentes${query}`);
+}
+
+export async function listRutas(
+  filters: { fecha?: string; operadorId?: string } = {},
+): Promise<RutaListada[]> {
+  const params = new URLSearchParams();
+  if (filters.fecha) params.set('fecha', filters.fecha);
+  if (filters.operadorId) params.set('operadorId', filters.operadorId);
+
+  const query = params.toString();
+  const result = await request<{ rutas: RutaListada[] }>(`/api/rutas${query ? `?${query}` : ''}`);
+  return result.rutas;
+}
+
+export async function getRuta(id: string): Promise<RutaDetalle> {
+  const result = await request<{ ruta: RutaDetalle }>(`/api/rutas/${id}`);
+  return result.ruta;
+}
+
+export async function createRuta(input: {
+  operadorId: string;
+  fecha: string;
+  clienteIds: string[];
+  nombre?: string | null;
+  observaciones?: string | null;
+}): Promise<Ruta> {
+  const result = await request<{ ruta: Ruta }>('/api/rutas', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return result.ruta;
+}
+
+export async function cambiarEstadoRuta(id: string, estado: EstadoRuta): Promise<Ruta> {
+  const result = await request<{ ruta: Ruta }>(`/api/rutas/${id}/estado`, {
+    method: 'PATCH',
+    body: JSON.stringify({ estado }),
+  });
+  return result.ruta;
+}
+
+export async function deleteRuta(id: string): Promise<void> {
+  await request<{ eliminada: string }>(`/api/rutas/${id}`, { method: 'DELETE' });
 }
 
 /* ------------------------------- usuarios ------------------------------- */
@@ -574,22 +730,46 @@ export async function request<T>(
   return payload as T;
 }
 
+/**
+ * Refresh en curso, para que varias respuestas 401 simultaneas compartan una
+ * sola renovacion.
+ *
+ * El backend rota el refresh token: al usarlo, el anterior queda revocado. Si
+ * dos peticiones fallan con 401 al mismo tiempo y cada una renueva por su cuenta,
+ * la segunda llega con un token que la primera ya revoco, el backend responde
+ * error, y `clearSession` borra la sesion que la primera acababa de guardar. El
+ * usuario ve que lo sacan al login aunque la renovacion haya funcionado.
+ */
+let refrescoEnCurso: Promise<boolean> | null = null;
+
 async function refrescar(): Promise<boolean> {
-  const refreshToken = cache?.refreshToken;
-  if (!refreshToken) return false;
+  if (refrescoEnCurso) return refrescoEnCurso;
 
-  const response = await fetch(`${API_URL}/api/auth/refresh`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refreshToken }),
-  });
+  const tarea = (async () => {
+    const refreshToken = cache?.refreshToken;
+    if (!refreshToken) return false;
 
-  if (!response.ok) {
-    await clearSession();
-    return false;
+    const response = await fetch(`${API_URL}/api/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken }),
+    }).catch(() => null);
+
+    if (!response?.ok) {
+      await clearSession();
+      return false;
+    }
+
+    const session = (await response.json()) as Session;
+    await guardar(session);
+    return true;
+  })();
+
+  refrescoEnCurso = tarea;
+
+  try {
+    return await tarea;
+  } finally {
+    refrescoEnCurso = null;
   }
-
-  const session = (await response.json()) as Session;
-  await guardar(session);
-  return true;
 }

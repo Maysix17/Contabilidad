@@ -71,6 +71,13 @@ export default function AppLayout() {
           tabBarIcon: ({ color }) => <Icono nombre="trending-up" color={color} />,
         }}
       />
+      <Tabs.Screen
+        name="rutas"
+        options={{
+          title: 'Rutas',
+          tabBarIcon: ({ color }) => <Icono nombre="map-marker-path" color={color} />,
+        }}
+      />
       {esAdmin ? (
         <Tabs.Screen
           name="usuarios"
@@ -95,6 +102,8 @@ export default function AppLayout() {
       <Tabs.Screen name="clientes/nuevo" options={{ href: null }} />
       <Tabs.Screen name="clientes/[id]" options={{ href: null }} />
       <Tabs.Screen name="usuarios/nuevo" options={{ href: null }} />
+      <Tabs.Screen name="rutas/nueva" options={{ href: null }} />
+      <Tabs.Screen name="rutas/[id]" options={{ href: null }} />
     </Tabs>
   );
 }

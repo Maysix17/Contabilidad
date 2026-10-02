@@ -37,6 +37,11 @@ export function notFound(message = 'Recurso no encontrado'): HttpError {
   return new HttpError(404, message);
 }
 
+/** 429: se usa para el limite de intentos del login. */
+export function tooManyRequests(message: string): HttpError {
+  return new HttpError(429, message);
+}
+
 export function errorHandler(error: Error, c: Context): Response {
   if (error instanceof HttpError) {
     return c.json(

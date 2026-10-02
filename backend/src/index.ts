@@ -9,6 +9,7 @@ import { authRoutes } from '@/routes/auth';
 import { clienteRoutes } from '@/routes/clientes';
 import { creditoRoutes } from '@/routes/creditos';
 import { indicadorRoutes } from '@/routes/indicadores';
+import { rutaRoutes } from '@/routes/rutas';
 import { usuarioRoutes } from '@/routes/usuarios';
 
 const app = new Hono();
@@ -32,6 +33,7 @@ app.route('/api/auth', authRoutes);
 app.route('/api/clientes', clienteRoutes);
 app.route('/api/creditos', creditoRoutes);
 app.route('/api/indicadores', indicadorRoutes);
+app.route('/api/rutas', rutaRoutes);
 app.route('/api/usuarios', usuarioRoutes);
 
 app.notFound((c) => c.json({ error: { message: 'Ruta no encontrada' } }, 404));

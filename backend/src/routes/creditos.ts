@@ -11,8 +11,17 @@ import {
   type PlanCuota,
 } from '@/creditos/calculos';
 import { db } from '@/db';
-import { abonos, clientes, creditos, cuotas, usuarios, type PeriodoPago } from '@/db/schema';
-import { badRequest, conflict, notFound, requireAuth, requireRole } from '@/http';
+import {
+  abonos,
+  clientes,
+  creditos,
+  cuotas,
+  rutas,
+  rutasClientes,
+  usuarios,
+  type PeriodoPago,
+} from '@/db/schema';
+import { badRequest, conflict, forbidden, notFound, requireAuth, requireRole } from '@/http';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -266,12 +275,21 @@ creditoRoutes.post('/', async (c) => {
       nombre: clientes.nombre,
       apellido: clientes.apellido,
       documento: clientes.documento,
+      activo: clientes.activo,
     })
     .from(clientes)
     .where(eq(clientes.id, clienteId))
     .limit(1);
 
   if (!cliente) throw notFound('Cliente no encontrado');
+
+  /**
+   * El formulario de nuevo credito ya oculta a los clientes inactivos, pero esa
+   * es solo la interfaz: si se llama al endpoint directamente, uno desactivado
+   * podria quedar con deuda nueva sin que nadie lo note hasta el proximo
+   * corte. Se valida igual que la regla de un solo credito activo.
+   */
+  if (!cliente.activo) throw conflict('El cliente esta inactivo y no puede recibir creditos');
 
   const [creditoActivo] = await db
     .select({ id: creditos.id })
@@ -398,11 +416,46 @@ creditoRoutes.post('/:id/abonos', async (c) => {
   const monto = assertMonto(body.monto, 'monto');
   const fecha = body.fecha ? assertDate(body.fecha, 'fecha') : hoy();
   const cuotaId = body.cuotaId ? assertUuid(body.cuotaId as string, 'cuotaId') : null;
+  const rutaId = body.rutaId ? assertUuid(body.rutaId as string, 'rutaId') : null;
 
   const [credito] = await db.select().from(creditos).where(eq(creditos.id, id)).limit(1);
   if (!credito) throw notFound('Credito no encontrado');
   if (credito.estado === 'cerrado') {
     throw conflict('No se pueden registrar abonos en un credito cerrado');
+  }
+
+  /**
+   * El abono se puede anclar a una ruta para que despues se sepa en que visita
+   * se cobro. Solo el operador de esa ruta (o un administrador) puede hacerlo, y
+   * el cliente tiene que estar realmente asignado: si no, cualquiera podria
+   * colgar sus abonos de la ruta de otro y falsear el rendimiento de esa persona.
+   */
+  if (rutaId) {
+    const [ruta] = await db.select().from(rutas).where(eq(rutas.id, rutaId)).limit(1);
+    if (!ruta) throw notFound('La ruta no existe');
+    if (ruta.estado === 'cerrada') {
+      throw conflict('Esa ruta ya esta cerrada');
+    }
+    if (ruta.operadorId !== userId) {
+      const [yo] = await db
+        .select({ rol: usuarios.rol })
+        .from(usuarios)
+        .where(eq(usuarios.id, userId))
+        .limit(1);
+      if (yo?.rol !== 'administrador') {
+        throw forbidden('Esa ruta no es tuya');
+      }
+    }
+
+    const [asignado] = await db
+      .select({ id: rutasClientes.id })
+      .from(rutasClientes)
+      .where(and(eq(rutasClientes.rutaId, rutaId), eq(rutasClientes.clienteId, credito.clienteId)))
+      .limit(1);
+
+    if (!asignado) {
+      throw badRequest('Ese cliente no hace parte de la ruta');
+    }
   }
 
   const [cliente] = await db
@@ -525,6 +578,7 @@ creditoRoutes.post('/:id/abonos', async (c) => {
       .values({
         creditoId: id,
         cuotaId,
+        rutaId,
         monto: monto.toString(),
         fecha,
         referencia: optionalText(body.referencia, 'referencia', 60),

@@ -324,6 +324,22 @@ export function resumenCuotas(
   };
 }
 
+/**
+ * El negocio opera en hora de Colombia (UTC-5), no en UTC.
+ *
+ * `toISOString()` devuelve la fecha en UTC, que entre las 7 de la tarde y la
+ * medianoche ya es el dia siguiente. Con eso, un abono registrado a las 9 de la
+ * noche se guardaba con la fecha de manana y el conteo de morosidad corria un
+ * dia. `Intl` con la zona explicita evita el corrimiento sin depender de la
+ * configuracion del servidor.
+ */
+export const ZONA_OPERACION = 'America/Bogota';
+
 export function hoy(): string {
-  return new Date().toISOString().slice(0, 10);
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: ZONA_OPERACION,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
 }

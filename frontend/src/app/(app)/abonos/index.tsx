@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -17,6 +17,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { ErrorBox, Vacio } from '@/components/ui-cards';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { useRefresco } from '@/hooks/use-refresco';
 import { useTheme } from '@/hooks/use-theme';
 import { formatearFecha, formatearPesos } from '@/utils/money';
 
@@ -28,7 +29,7 @@ export default function AbonosScreen() {
   const [refrescando, setRefrescando] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const cargar = useCallback(async (texto: string, refrescar = false) => {
+  const cargar = useCallback(async (texto: string) => {
     try {
       setClientes(await listClientesPorCobrar(texto || undefined));
       setError(null);
@@ -38,14 +39,15 @@ export default function AbonosScreen() {
     } finally {
       setCargando(false);
     }
-
-    if (refrescar) setRefrescando(false);
   }, []);
 
-  useEffect(() => {
-    const timer = setTimeout(() => void cargar(search), search ? 400 : 0);
-    return () => clearTimeout(timer);
-  }, [cargar, search]);
+  /**
+   * Esta es la lista con la que trabaja el cobrador. Entra al credito, registra
+   * el abono y vuelve con el boton atras: sin recargar, el saldo seguia sin
+   * descontar y el cliente que ya liquidado seguia apareciendo como por cobrar,
+   * con el riesgo de volver a pasar por su casa.
+   */
+  useRefresco(useCallback(() => void cargar(search), [cargar, search]), search ? 400 : 0);
 
   const total = clientes.reduce(
     (suma, item) => suma + Number(item.creditoActivo.saldo),
@@ -87,7 +89,13 @@ export default function AbonosScreen() {
         <ScrollView
           contentContainerStyle={styles.lista}
           refreshControl={
-            <RefreshControl refreshing={refrescando} onRefresh={() => void cargar(search, true)} />
+            <RefreshControl
+              refreshing={refrescando}
+              onRefresh={() => {
+                setRefrescando(true);
+                void cargar(search).then(() => setRefrescando(false));
+              }}
+            />
           }>
           {!cargando && clientes.length === 0 ? (
             <Vacio

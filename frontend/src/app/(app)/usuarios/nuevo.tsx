@@ -50,7 +50,10 @@ export default function NuevoUsuarioScreen() {
         contrasena,
         rol,
       });
-      router.back();
+      // `replace` y no `back`: `back` deja esta entrada viva en el stack, y
+      // al volver a entrar al formulario reaparecerian los datos que se
+      // acababan de escribir.
+      router.replace('/usuarios');
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : 'No se pudo crear el usuario');
     } finally {

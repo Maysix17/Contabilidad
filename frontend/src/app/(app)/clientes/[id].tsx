@@ -1,5 +1,5 @@
 import { Link, useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -14,8 +14,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
   ApiError,
+  desactivarCliente,
   deleteCliente,
-  listClientes,
+  getCliente,
   listCreditos,
   updateCliente,
   type Cliente,
@@ -29,7 +30,31 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { ErrorBox, EstadoBadge, FilaDato, Vacio } from '@/components/ui-cards';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { useRefresco } from '@/hooks/use-refresco';
 import { formatearFecha, formatearPesos } from '@/utils/money';
+
+export interface FormularioCliente {
+  nombre: string;
+  apellido: string;
+  celular: string;
+  direccion: string;
+  alias: string;
+  telefono: string;
+  ciudad: string;
+}
+
+/** Copia los campos editables del cliente al formulario. */
+function formularioDe(cliente: Cliente): FormularioCliente {
+  return {
+    nombre: cliente.nombre,
+    apellido: cliente.apellido,
+    celular: cliente.celular,
+    direccion: cliente.direccion,
+    alias: cliente.alias ?? '',
+    telefono: cliente.telefono ?? '',
+    ciudad: cliente.ciudad ?? '',
+  };
+}
 
 export default function ClienteDetalleScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -38,71 +63,58 @@ export default function ClienteDetalleScreen() {
 
   const [cliente, setCliente] = useState<Cliente | null>(null);
   const [creditos, setCreditos] = useState<Credito[]>([]);
-  const [editando, setEditando] = useState(false);
-  const [form, setForm] = useState({
-    nombre: '',
-    apellido: '',
-    celular: '',
-    direccion: '',
-    alias: '',
-    telefono: '',
-    ciudad: '',
-  });
+
+  /**
+   * El formulario solo existe mientras se edita. Fuera de la edicion, los
+   * valores se derivan del cliente, asi que una recarga al volver del foco los
+   * actualiza sin necesidad de copiar nada, y nunca pisa lo que se esta
+   * escribiendo.
+   */
+  const [form, setForm] = useState<FormularioCliente | null>(null);
+  const editando = form !== null;
+
   const [cargando, setCargando] = useState(true);
   const [refrescando, setRefrescando] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const cargar = useCallback(
-    async (refrescar = false) => {
-      if (!id) return;
-      try {
-        const [listaClientes, listaCreditos] = await Promise.all([
-          listClientes(),
-          listCreditos({ clienteId: id }),
-        ]);
-        const encontrado = listaClientes.find((item) => item.id === id) ?? null;
-        setCliente(encontrado);
-        setCreditos(listaCreditos);
-        setError(null);
-        if (encontrado) {
-          setForm({
-            nombre: encontrado.nombre,
-            apellido: encontrado.apellido,
-            celular: encontrado.celular,
-            direccion: encontrado.direccion,
-            alias: encontrado.alias ?? '',
-            telefono: encontrado.telefono ?? '',
-            ciudad: encontrado.ciudad ?? '',
-          });
-        }
-      } catch (cause) {
-        setError(cause instanceof ApiError ? cause.message : 'No se pudo cargar el cliente');
-      } finally {
-        setCargando(false);
-      }
+  const cargar = useCallback(async () => {
+    if (!id) return;
+    try {
+      const [encontrado, listaCreditos] = await Promise.all([
+        getCliente(id),
+        listCreditos({ clienteId: id }),
+      ]);
+      setCliente(encontrado);
+      setCreditos(listaCreditos);
+      setError(null);
+    } catch (cause) {
+      setError(cause instanceof ApiError ? cause.message : 'No se pudo cargar el cliente');
+    } finally {
+      setCargando(false);
+    }
+  }, [id]);
 
-      if (refrescar) setRefrescando(false);
-    },
-    [id],
-  );
-
-  useEffect(() => {
-    const timer = setTimeout(() => void cargar(), 0);
-    return () => clearTimeout(timer);
-  }, [cargar]);
+  /**
+   * Desde esta pantalla se sale al detalle de un credito a cobrar, y se entra al
+   * formulario de credito nuevo. Al volver, los saldos de esa lista de
+   * creditos seguian siendo los de antes del cobro y el credito recien creado
+   * no aparecia hasta recargar a mano.
+   */
+  useRefresco(cargar);
 
   async function refrescar() {
     setRefrescando(true);
-    await cargar(true);
+    await cargar();
+    setRefrescando(false);
   }
 
   async function guardar() {
-    if (!id || enviando) return;
+    if (!id || !form || enviando) return;
     setEnviando(true);
     setError(null);
     try {
-      const actualizado = await updateCliente(id, {
+      await updateCliente(id, {
         nombre: form.nombre.trim(),
         apellido: form.apellido.trim(),
         celular: form.celular.trim(),
@@ -111,8 +123,13 @@ export default function ClienteDetalleScreen() {
         telefono: form.telefono.trim() || null,
         ciudad: form.ciudad.trim() || null,
       });
-      setCliente(actualizado);
-      setEditando(false);
+      // Se recarga en lugar de confiar solo en lo que devolvio el
+      // update: la vista de arriba muestra direccion2 y otros campos
+      // que este formulario no edita, y no deben quedarse viejos.
+      await cargar();
+      // Al soltar el formulario se vuelve a leer del cliente, que ya
+      // viene actualizado desde el servidor.
+      setForm(null);
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : 'No se pudo actualizar');
     } finally {
@@ -120,22 +137,48 @@ export default function ClienteDetalleScreen() {
     }
   }
 
+  function confirmarDesactivar() {
+    if (!id) return;
+    Alert.alert(
+      'Desactivar cliente',
+      'Deja de recibir creditos y de aparecer en el cobro, pero conserva todo su historial de abonos.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Desactivar',
+          style: 'destructive',
+          onPress: () => {
+            void desactivarCliente(id)
+              .then(() => cargar())
+              .catch((cause) =>
+                setError(cause instanceof ApiError ? cause.message : 'No se pudo desactivar'),
+              );
+          },
+        },
+      ],
+    );
+  }
+
   function confirmarEliminar() {
     if (!id) return;
-    Alert.alert('Eliminar cliente', 'Se eliminarán también sus créditos y abonos.', [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Eliminar',
-        style: 'destructive',
-        onPress: () => {
-          void deleteCliente(id)
-            .then(() => router.replace('/clientes'))
-            .catch((cause) =>
-              setError(cause instanceof ApiError ? cause.message : 'No se pudo eliminar'),
-            );
+    Alert.alert(
+      'Eliminar cliente',
+      'Solo es posible si nunca ha tenido un credito. Si tiene historial, desactivalo.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Eliminar',
+          style: 'destructive',
+          onPress: () => {
+            void deleteCliente(id)
+              .then(() => router.replace('/clientes'))
+              .catch((cause) =>
+                setError(cause instanceof ApiError ? cause.message : 'No se pudo eliminar'),
+              );
+          },
         },
-      },
-    ]);
+      ],
+    );
   }
 
   return (
@@ -170,7 +213,11 @@ export default function ClienteDetalleScreen() {
                 </ThemedView>
 
                 <FilaBoton>
-                  <Button title="Editar" variant="secundario" onPress={() => setEditando(true)} />
+                  <Button
+                    title="Editar"
+                    variant="secundario"
+                    onPress={() => setForm(formularioDe(cliente))}
+                  />
                   <Link href={`/creditos/nuevo?cliente=${cliente.id}`} asChild>
                     <Button title="Nuevo crédito" />
                   </Link>
@@ -178,12 +225,26 @@ export default function ClienteDetalleScreen() {
 
                 {esAdmin ? (
                   <FilaBoton>
-                    <Button
-                      title="Eliminar cliente"
-                      variant="peligro"
-                      onPress={confirmarEliminar}
-                    />
+                    {cliente.activo ? (
+                      <Button
+                        title="Desactivar cliente"
+                        variant="peligro"
+                        onPress={confirmarDesactivar}
+                      />
+                    ) : (
+                      <Button
+                        title="Eliminar cliente"
+                        variant="peligro"
+                        onPress={confirmarEliminar}
+                      />
+                    )}
                   </FilaBoton>
+                ) : null}
+
+                {!cliente.activo ? (
+                  <ErrorBox
+                    mensaje="Este cliente esta inactivo: no recibe creditos nuevos ni aparece en el cobro. Su historial sigue guardado."
+                  />
                 ) : null}
 
                 <ThemedText type="smallBold" style={styles.titulo}>
@@ -251,7 +312,7 @@ export default function ClienteDetalleScreen() {
                   <Button
                     title="Cancelar"
                     variant="secundario"
-                    onPress={() => setEditando(false)}
+                    onPress={() => setForm(null)}
                   />
                 </FilaBoton>
               </>

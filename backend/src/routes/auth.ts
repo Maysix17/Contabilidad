@@ -2,13 +2,21 @@ import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 
 import { assertCedula } from '@/auth/cedula';
+import { exceeded, limpiarIntentos, registrarIntento } from '@/auth/rate-limit';
 import { loginUser, revokeRefreshToken, rotateRefreshToken } from '@/auth/service';
 import { db } from '@/db';
 import { usuarios } from '@/db/schema';
-import { badRequest, requireAuth, unauthorized } from '@/http';
+import { badRequest, requireAuth, tooManyRequests, unauthorized } from '@/http';
 
 export const authRoutes = new Hono();
 
+/**
+ * El limite se consulta antes de tocar la base: asi un ataque de fuerza bruta
+ * se detiene sin generar ni una consulta de usuarios, y sin dejar que el
+ * atacante pueda distinguir "no existe" de "contrasena incorrecta" por el
+ * tiempo de respuesta. El mensaje es identico al de credenciales invalidas a
+ * proposito, para no confirmar que la cedula existe.
+ */
 authRoutes.post('/login', async (c) => {
   const body = await c.req.json<{ cedula?: string; password?: string }>();
   const password = body.password ?? '';
@@ -17,7 +25,18 @@ authRoutes.post('/login', async (c) => {
     throw badRequest('La contrasena es obligatoria');
   }
 
-  return c.json(await loginUser({ cedula: assertCedula(body.cedula), password }));
+  if (exceeded(c)) {
+    throw tooManyRequests('Demasiados intentos fallidos. Espera unos minutos e intenta de nuevo');
+  }
+
+  try {
+    const session = await loginUser({ cedula: assertCedula(body.cedula), password });
+    limpiarIntentos(c);
+    return c.json(session);
+  } catch (error) {
+    registrarIntento(c);
+    throw error;
+  }
 });
 
 authRoutes.post('/refresh', async (c) => {

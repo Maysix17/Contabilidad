@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -32,6 +32,8 @@ import {
   Vacio,
 } from '@/components/ui-cards';
 import { MaxContentWidth, Pastel, Spacing } from '@/constants/theme';
+import { useRefresco } from '@/hooks/use-refresco';
+import { ZONA_OPERACION } from '@/utils/fecha';
 import { formatearFecha, formatearPesos } from '@/utils/money';
 
 export default function InicioScreen() {
@@ -46,7 +48,7 @@ export default function InicioScreen() {
   const [refrescando, setRefrescando] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const cargar = useCallback(async (refrescar = false) => {
+  const cargar = useCallback(async () => {
     try {
       setDatos(await getIndicadores());
       setError(null);
@@ -56,18 +58,20 @@ export default function InicioScreen() {
     } finally {
       setCargando(false);
     }
-
-    if (refrescar) setRefrescando(false);
   }, []);
 
-  useEffect(() => {
-    const timer = setTimeout(() => void cargar(), 0);
-    return () => clearTimeout(timer);
-  }, [cargar]);
+  /**
+   * Todas las cifras de esta pantalla dependen de movimientos que se hacen en
+   * otras: un abono, un credito nuevo o un cliente desactivado. Sin recargar al
+   * recuperar el foco, el saldo por cobrar y los abonos del mes seguian
+   * mostrando las cifras de antes de cobrar.
+   */
+  useRefresco(cargar);
 
   async function refrescar() {
     setRefrescando(true);
-    await cargar(true);
+    await cargar();
+    setRefrescando(false);
   }
 
   const ind = datos?.indicadores;
@@ -226,15 +230,18 @@ export default function InicioScreen() {
   );
 }
 
-/** Fecha en espanol, construida con las partes locales para no correr de dia. */
+/**
+ * Fecha en espanol. Se formatea con la zona del negocio y no con la del
+ * dispositivo: un celular en otra hora marcaria un dia distinto al que el
+ * backend considera hoy.
+ */
 function fechaLarga(): string {
-  const ahora = new Date();
-
   return new Intl.DateTimeFormat('es-CO', {
+    timeZone: ZONA_OPERACION,
     weekday: 'long',
     day: 'numeric',
     month: 'long',
-  }).format(ahora);
+  }).format(new Date());
 }
 
 const styles = StyleSheet.create({

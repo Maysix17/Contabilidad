@@ -50,6 +50,13 @@
       "when": 1790711400000,
       "tag": "0006_quitar_bisemanal",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790798400000,
+      "tag": "0007_abonos_ruta_id",
+      "breakpoints": true
     }
   ]
 }

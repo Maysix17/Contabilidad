@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -31,6 +31,8 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { ErrorBox, EstadoBadge, FilaDato, Vacio } from '@/components/ui-cards';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { useRefresco } from '@/hooks/use-refresco';
+import { hoy } from '@/utils/fecha';
 import { useTheme } from '@/hooks/use-theme';
 import { formatearFecha, formatearPesos, parsearPesos } from '@/utils/money';
 
@@ -47,7 +49,12 @@ function proximaPagable(cuotas: Cuota[]): Cuota | null {
 export default function CreditoDetalleScreen() {
   const theme = useTheme();
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  /**
+   * `ruta` llega cuando el cobro se esta haciendo desde el detalle de una ruta.
+   * No cambia como se valida el abono, solo lo ancla a esa visita para que despues
+   * se pueda saber cuanto cobro cada operador.
+   */
+  const { id, ruta } = useLocalSearchParams<{ id: string; ruta?: string }>();
   const { esAdmin } = useSession();
 
   const [credito, setCredito] = useState<CreditoDetalle | null>(null);
@@ -58,36 +65,34 @@ export default function CreditoDetalleScreen() {
   const [modal, setModal] = useState(false);
   const [cuotaSeleccionada, setCuotaSeleccionada] = useState<Cuota | null>(null);
   const [monto, setMonto] = useState('');
-  const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10));
+  const [fecha, setFecha] = useState(hoy());
   const [referencia, setReferencia] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [errorAbono, setErrorAbono] = useState<string | null>(null);
 
-  const cargar = useCallback(
-    async (refrescar = false) => {
-      if (!id) return;
-      try {
-        setCredito(await getCredito(id));
-        setError(null);
-      } catch (cause) {
-        setError(cause instanceof ApiError ? cause.message : 'No se pudo cargar el crédito');
-      } finally {
-        setCargando(false);
-      }
+  const cargar = useCallback(async () => {
+    if (!id) return;
+    try {
+      setCredito(await getCredito(id));
+      setError(null);
+    } catch (cause) {
+      setError(cause instanceof ApiError ? cause.message : 'No se pudo cargar el crédito');
+    } finally {
+      setCargando(false);
+    }
+  }, [id]);
 
-      if (refrescar) setRefrescando(false);
-    },
-    [id],
-  );
-
-  useEffect(() => {
-    const timer = setTimeout(() => void cargar(), 0);
-    return () => clearTimeout(timer);
-  }, [cargar]);
+  /**
+   * Cada abono, anulacion o cierre ya recarga aqui mismo, pero esta pantalla
+   * tambien puede quedar vieja si la app estuvo en segundo plano mientras otro
+   * cobro se registraba.
+   */
+  useRefresco(cargar);
 
   async function refrescar() {
     setRefrescando(true);
-    await cargar(true);
+    await cargar();
+    setRefrescando(false);
   }
 
   /** Sin cuota: el backend reparte el monto sobre las cuotas mas antiguas. */
@@ -136,6 +141,7 @@ export default function CreditoDetalleScreen() {
       await registrarAbono(id, {
         monto: valor,
         cuotaId: cuotaSeleccionada?.id ?? null,
+        rutaId: ruta ?? null,
         fecha,
         referencia: referencia.trim() || null,
       });

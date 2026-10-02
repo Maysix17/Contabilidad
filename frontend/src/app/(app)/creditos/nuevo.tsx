@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -28,7 +28,9 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { ErrorBox } from '@/components/ui-cards';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { useRefresco } from '@/hooks/use-refresco';
 import { useTheme } from '@/hooks/use-theme';
+import { hoy } from '@/utils/fecha';
 import { formatearFecha, formatearPesos, parsearPesos } from '@/utils/money';
 
 const PERIODOS: { valor: PeriodoPago; texto: string }[] = [
@@ -48,10 +50,6 @@ const DIAS_PAGO = [
   { valor: '6', texto: 'Sabado' },
   { valor: '7', texto: 'Domingo (cobra sabado)' },
 ];
-
-function hoy(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 function FilaResumen({ etiqueta, valor }: { etiqueta: string; valor: string }) {
   return (
@@ -88,22 +86,24 @@ export default function NuevoCreditoScreen() {
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      void listClientesDisponiblesParaCredito(busqueda || undefined)
-        .then((lista) => {
-          setClientes(lista);
-          setErrorClientes(null);
-        })
-        .catch((cause) => {
-          setClientes([]);
-          setErrorClientes(
-            cause instanceof ApiError ? cause.message : 'No se pudieron cargar los clientes',
-          );
-        });
-    }, busqueda ? 400 : 0);
-    return () => clearTimeout(timer);
+  const cargarClientes = useCallback(async () => {
+    try {
+      setClientes(await listClientesDisponiblesParaCredito(busqueda || undefined));
+      setErrorClientes(null);
+    } catch (cause) {
+      setClientes([]);
+      setErrorClientes(
+        cause instanceof ApiError ? cause.message : 'No se pudieron cargar los clientes',
+      );
+    }
   }, [busqueda]);
+
+  /**
+   * Si se entra, se cancela y se vuelve a entrar, la pantalla sigue montada con
+   * la lista anterior: un cliente desactivado o que ya recibio un credito
+   * seguiria apareciendo como seleccionable.
+   */
+  useRefresco(cargarClientes, busqueda ? 400 : 0);
 
   const sugeridos = useMemo(() => {
     const visibles = clientes.slice(0, 5);

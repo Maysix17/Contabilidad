@@ -18,6 +18,7 @@ export interface ClientePayload {
   telefono?: unknown;
   direccion2?: unknown;
   ciudad?: unknown;
+  activo?: unknown;
 }
 
 function requiredText(value: unknown, field: string, maxLength: number): string {
@@ -283,6 +284,21 @@ clienteRoutes.patch('/:id', async (c) => {
     updates.ciudad = optionalText(body.ciudad, 'ciudad', 80);
   }
 
+  /**
+   * Desactivar es la forma correcta de "dar de baja" a un cliente: deja de
+   * aparecer para recibir creditos nuevos ni aparecer en el cobro, pero su
+   * historia de creditos y abonos sigue intacta y los indicadores lo siguen
+   * contando. Antes esto no existia, y la unica forma de sacar a alguien de la
+   * operacion era borrarlo, que arrastraba en cascada todos sus creditos y
+   * abonos.
+   */
+  if (body.activo !== undefined) {
+    if (typeof body.activo !== 'boolean') {
+      throw badRequest('activo debe ser true o false');
+    }
+    updates.activo = body.activo;
+  }
+
   const [row] = await db
     .update(clientes)
     .set(updates)
@@ -300,6 +316,26 @@ clienteRoutes.delete('/:id', async (c) => {
   await requireRole(c, 'administrador');
 
   const id = assertUuid(c.req.param('id'));
+
+  /**
+   * Borrar en cascada se lleva por delante creditos, cuotas y abonos, es decir
+   * el historial contable de esa persona. Eso solo es aceptable si nunca se
+   * movieron, o el saldo por cobrar dejaria de cuadrar sin que nadie lo notara.
+   * Para el resto de casos la salida correcta es desactivar con
+   * `PATCH { activo: false }`.
+   */
+  const [conCredito] = await db
+    .select({ id: creditos.id })
+    .from(creditos)
+    .where(eq(creditos.clienteId, id))
+    .limit(1);
+
+  if (conCredito) {
+    throw conflict(
+      'Este cliente tiene creditos registrados y no se puede eliminar. ' +
+        'Desactivalo para sacarlo de la operacion sin perder su historial.',
+    );
+  }
 
   const [row] = await db
     .delete(clientes)

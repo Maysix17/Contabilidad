@@ -1,5 +1,5 @@
 import { Link } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -26,6 +26,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { ErrorBox, Vacio } from '@/components/ui-cards';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { useRefresco } from '@/hooks/use-refresco';
 import { useTheme } from '@/hooks/use-theme';
 
 export default function UsuariosScreen() {
@@ -38,27 +39,29 @@ export default function UsuariosScreen() {
   const [refrescando, setRefrescando] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const cargar = useCallback(async (texto: string, refrescar = false) => {
+  const cargar = useCallback(async (texto: string) => {
     try {
       setUsuarios(await listUsuarios(texto || undefined));
       setError(null);
     } catch (cause) {
+      setUsuarios([]);
       setError(cause instanceof ApiError ? cause.message : 'No se pudieron cargar los usuarios');
     } finally {
       setCargando(false);
     }
-
-    if (refrescar) setRefrescando(false);
   }, []);
 
-  useEffect(() => {
-    const timer = setTimeout(() => void cargar(search), search ? 400 : 0);
-    return () => clearTimeout(timer);
-  }, [cargar, search]);
+  /**
+   * El alta de usuarios se hace en otra pantalla y vuelve con `router.back()`,
+   * que no remonta esta lista. Sin recargar al recuperar el foco, el operador
+   * recien creado no aparecia.
+   */
+  useRefresco(useCallback(() => void cargar(search), [cargar, search]), search ? 400 : 0);
 
   async function refrescar() {
     setRefrescando(true);
-    await cargar(search, true);
+    await cargar(search);
+    setRefrescando(false);
   }
 
   function confirmarEliminar(usuario: Usuario) {

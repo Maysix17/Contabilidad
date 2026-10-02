@@ -159,6 +159,8 @@ export const abonos = pgTable(
       .notNull()
       .references(() => creditos.id, { onDelete: 'cascade' }),
     cuotaId: uuid('cuota_id').references(() => cuotas.id, { onDelete: 'set null' }),
+    /** Se llena solo si el abono se cobro desde dentro de una ruta. */
+    rutaId: uuid('ruta_id').references(() => rutas.id, { onDelete: 'set null' }),
     monto: numeric('monto', { precision: 18, scale: 2 }).notNull(),
     fecha: date('fecha').notNull(),
     referencia: text('referencia'),
@@ -177,6 +179,7 @@ export const abonos = pgTable(
     index('abonos_credito_idx').on(table.creditoId),
     index('abonos_fecha_idx').on(table.fecha),
     index('abonos_registrado_por_idx').on(table.registradoPor),
+    index('abonos_ruta_id_idx').on(table.rutaId),
   ],
 );
 
@@ -273,6 +276,7 @@ export const cuotasRelations = relations(cuotas, ({ one }) => ({
 export const abonosRelations = relations(abonos, ({ one }) => ({
   credito: one(creditos, { fields: [abonos.creditoId], references: [creditos.id] }),
   cuota: one(cuotas, { fields: [abonos.cuotaId], references: [cuotas.id] }),
+  ruta: one(rutas, { fields: [abonos.rutaId], references: [rutas.id] }),
   registrador: one(usuarios, { fields: [abonos.registradoPor], references: [usuarios.id] }),
   anulador: one(usuarios, { fields: [abonos.anuladoPor], references: [usuarios.id] }),
 }));
@@ -281,6 +285,7 @@ export const rutasRelations = relations(rutas, ({ one, many }) => ({
   operador: one(usuarios, { fields: [rutas.operadorId], references: [usuarios.id] }),
   creador: one(usuarios, { fields: [rutas.creadoPor], references: [usuarios.id] }),
   clientes: many(rutasClientes),
+  abonos: many(abonos),
 }));
 
 export const rutasClientesRelations = relations(rutasClientes, ({ one }) => ({
