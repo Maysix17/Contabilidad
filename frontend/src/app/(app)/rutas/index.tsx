@@ -62,14 +62,16 @@ export default function RutasScreen() {
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <ScreenHeader
-          titulo={esAdmin ? 'Rutas' : 'Mi ruta'}
-          subtitulo={
-            esAdmin
-              ? 'Asigna a cada operador los clientes que le tocan cobrar'
-              : 'Los clientes que te toca visitar hoy'
-          }
-        />
+        <View style={styles.titulo}>
+          <ScreenHeader
+            titulo={esAdmin ? 'Rutas' : 'Mi ruta'}
+            subtitulo={
+              esAdmin
+                ? 'Asigna a cada operador los clientes que le tocan cobrar'
+                : 'Los clientes que te toca visitar hoy'
+            }
+          />
+        </View>
 
         <View style={styles.filtros}>
           <View style={styles.campoFecha}>
@@ -191,6 +193,12 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: MaxContentWidth,
     alignSelf: 'center',
+  },
+  titulo: {
+    // Solo el padding lateral: el `ScreenHeader` ya pone su propio
+    // `marginTop`, y añadirlo aqui lo duplicaba y dejaba el titulo mas bajo
+    // que en las demas pantallas.
+    paddingHorizontal: Spacing.four,
   },
   filtros: {
     flexDirection: 'row',

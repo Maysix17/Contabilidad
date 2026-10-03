@@ -5,6 +5,7 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -12,26 +13,43 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
+
 import {
   ApiError,
   desactivarCliente,
   deleteCliente,
   getCliente,
   listCreditos,
+  listarFotosCliente,
+  subirFotoCliente,
   updateCliente,
+  urlFoto,
   type Cliente,
   type Credito,
+  type FotoCliente,
+  type TipoFotoCliente,
 } from '@/api/client';
 import { useSession } from '@/auth/session';
 import { Button, FilaBoton } from '@/components/button';
 import { FormField } from '@/components/form-field';
+import { elegirFoto, preguntarFoto, VisorFoto, type OrigenFoto } from '@/components/foto';
 import { ScreenHeader } from '@/components/screen-header';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { ErrorBox, EstadoBadge, FilaDato, Vacio } from '@/components/ui-cards';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useRefresco } from '@/hooks/use-refresco';
+import { useTheme } from '@/hooks/use-theme';
 import { formatearFecha, formatearPesos } from '@/utils/money';
+
+/** Las tres ranuras de foto que existen por cliente, siempre las tres. */
+const RANURAS_FOTO: { tipo: TipoFotoCliente; etiqueta: string }[] = [
+  { tipo: 'cedula', etiqueta: 'Cédula' },
+  { tipo: 'persona', etiqueta: 'Cliente' },
+  { tipo: 'direccion', etiqueta: 'Dirección' },
+];
 
 export interface FormularioCliente {
   nombre: string;
@@ -60,9 +78,13 @@ export default function ClienteDetalleScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { esAdmin } = useSession();
+  const theme = useTheme();
 
   const [cliente, setCliente] = useState<Cliente | null>(null);
   const [creditos, setCreditos] = useState<Credito[]>([]);
+  const [fotos, setFotos] = useState<Record<string, FotoCliente | null>>({});
+  /** Foto abierta en pantalla completa; `null` cuando no hay ninguna. */
+  const [fotoAbierta, setFotoAbierta] = useState<{ uri: string; etiqueta: string } | null>(null);
 
   /**
    * El formulario solo existe mientras se edita. Fuera de la edicion, los
@@ -81,12 +103,19 @@ export default function ClienteDetalleScreen() {
   const cargar = useCallback(async () => {
     if (!id) return;
     try {
-      const [encontrado, listaCreditos] = await Promise.all([
+      const [encontrado, listaCreditos, listaFotos] = await Promise.all([
         getCliente(id),
         listCreditos({ clienteId: id }),
+        listarFotosCliente(id),
       ]);
       setCliente(encontrado);
       setCreditos(listaCreditos);
+      /**
+       * Se indexa por tipo y no se guarda como lista porque la pantalla siempre
+       * muestra las tres ranuras, vacias included: asi no hay que preguntar
+       * cuantas hay ni quais son.
+       */
+      setFotos(Object.fromEntries(listaFotos.map((foto) => [foto.tipo, foto])));
       setError(null);
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : 'No se pudo cargar el cliente');
@@ -159,6 +188,23 @@ export default function ClienteDetalleScreen() {
     );
   }
 
+  /**
+   * Agregar o reemplazar una foto ya creado el cliente. La que estaba antes se
+   * elimina sola en el servidor, asi que aqui no hay que preguntar por ella.
+   */
+  async function agregarFoto(tipo: TipoFotoCliente, etiqueta: string, origen: OrigenFoto) {
+    if (!id) return;
+    try {
+      const foto = await elegirFoto(origen);
+      if (!foto) return;
+
+      const guardada = await subirFotoCliente(id, tipo, foto.uri);
+      setFotos((current) => ({ ...current, [tipo]: guardada }));
+    } catch (cause) {
+      setError(cause instanceof ApiError ? cause.message : 'No se pudo subir la foto');
+    }
+  }
+
   function confirmarEliminar() {
     if (!id) return;
     Alert.alert(
@@ -211,6 +257,59 @@ export default function ClienteDetalleScreen() {
                   <FilaDato etiqueta="Ciudad" valor={cliente.ciudad ?? '—'} />
                   <FilaDato etiqueta="Alias" valor={cliente.alias ?? '—'} />
                 </ThemedView>
+
+                <ThemedText type="smallBold" themeColor="textSecondary">
+                  Fotos
+                </ThemedText>
+
+                <View style={styles.rejillaFotos}>
+                  {RANURAS_FOTO.map((ranura) => {
+                    const foto = fotos[ranura.tipo];
+                    return (
+                      <ThemedView key={ranura.tipo} type="backgroundElement" style={styles.foto}>
+                        {foto ? (
+                          <Pressable
+                            onPress={() => setFotoAbierta({ uri: urlFoto(foto.uri), etiqueta: ranura.etiqueta })}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Ver ${ranura.etiqueta} en pantalla completa`}>
+                            <Image
+                              source={{ uri: urlFoto(foto.uri) }}
+                              style={styles.fotoImagen}
+                              contentFit="cover"
+                              accessibilityIgnoresInvertColors
+                              accessibilityLabel={ranura.etiqueta}
+                            />
+                          </Pressable>
+                        ) : (
+                          <View style={styles.fotoVacia}>
+                            <MaterialCommunityIcons
+                              name="image-off-outline"
+                              size={24}
+                              color={theme.textSecondary}
+                            />
+                            <ThemedText type="small" themeColor="textSecondary">
+                              Sin foto
+                            </ThemedText>
+                          </View>
+                        )}
+
+                        <ThemedText type="smallBold" style={styles.fotoEtiqueta}>
+                          {ranura.etiqueta}
+                        </ThemedText>
+
+                        <Button
+                          title={foto ? 'Cambiar' : 'Tomar'}
+                          variant="secundario"
+                          onPress={() =>
+                            preguntarFoto(ranura.etiqueta, (origen) =>
+                              void agregarFoto(ranura.tipo, ranura.etiqueta, origen),
+                            )
+                          }
+                        />
+                      </ThemedView>
+                    );
+                  })}
+                </View>
 
                 <FilaBoton>
                   <Button
@@ -320,6 +419,12 @@ export default function ClienteDetalleScreen() {
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
+
+      <VisorFoto
+        uri={fotoAbierta?.uri ?? null}
+        etiqueta={fotoAbierta?.etiqueta ?? ''}
+        onClose={() => setFotoAbierta(null)}
+      />
     </ThemedView>
   );
 }
@@ -352,5 +457,31 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  rejillaFotos: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+  },
+  foto: {
+    flex: 1,
+    borderRadius: Spacing.three,
+    padding: Spacing.two,
+    gap: Spacing.one,
+  },
+  fotoImagen: {
+    width: '100%',
+    aspectRatio: 1,
+    borderRadius: Spacing.two,
+  },
+  fotoVacia: {
+    width: '100%',
+    aspectRatio: 1,
+    borderRadius: Spacing.two,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.one,
+  },
+  fotoEtiqueta: {
+    textAlign: 'center',
   },
 });

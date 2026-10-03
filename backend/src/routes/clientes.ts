@@ -1,12 +1,21 @@
 import { and, asc, eq, ilike, ne, notExists, or, type SQL } from 'drizzle-orm';
 import { Hono } from 'hono';
 
+import {
+  borrarArchivo,
+  extensionPermitida,
+  guardarFoto,
+  nombreArchivo,
+  TAMANO_MAXIMO,
+} from '@/almacen/fotos';
 import { db } from '@/db';
-import { clientes, creditos } from '@/db/schema';
+import { clientes, creditos, fotosCliente, type TipoFotoCliente } from '@/db/schema';
 import { badRequest, conflict, notFound, requireAuth, requireRole } from '@/http';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DOCUMENTO_PATTERN = /^[0-9a-zA-Z.-]{3,20}$/;
+
+const TIPOS_FOTO: TipoFotoCliente[] = ['cedula', 'persona', 'direccion'];
 
 export interface ClientePayload {
   documento?: unknown;
@@ -222,6 +231,129 @@ clienteRoutes.get('/con-credito-activo', async (c) => {
       },
     })),
   });
+});
+
+/**
+ * Fotos del cliente. Hay tres ranuras, una por tipo (`cedula`, `persona`,
+ * `direccion`), y la base de datos tiene un indice unico por cliente y tipo, asi
+ * que volver a subir una foto de un tipo reemplaza la anterior en vez de
+ * acumular versiones.
+ */
+clienteRoutes.get('/:id/fotos', async (c) => {
+  const id = assertUuid(c.req.param('id'));
+
+  const [existe] = await db
+    .select({ id: clientes.id })
+    .from(clientes)
+    .where(eq(clientes.id, id))
+    .limit(1);
+
+  if (!existe) {
+    throw notFound('Cliente no encontrado');
+  }
+
+  const rows = await db
+    .select()
+    .from(fotosCliente)
+    .where(eq(fotosCliente.clienteId, id))
+    .orderBy(asc(fotosCliente.tipo));
+
+  return c.json({ fotos: rows });
+});
+
+clienteRoutes.post('/:id/fotos', async (c) => {
+  const id = assertUuid(c.req.param('id'));
+
+  const tipo = c.req.query('tipo');
+  if (!tipo || !TIPOS_FOTO.includes(tipo as TipoFotoCliente)) {
+    throw badRequest('tipo debe ser cedula, persona o direccion');
+  }
+
+  const [existe] = await db
+    .select({ id: clientes.id })
+    .from(clientes)
+    .where(eq(clientes.id, id))
+    .limit(1);
+
+  if (!existe) {
+    throw notFound('Cliente no encontrado');
+  }
+
+  const body = await c.req.parseBody();
+  const archivo = body.foto;
+
+  /**
+   * Se registra cada intento con su resultado. Cuando el telefono y el
+   * computador estan en redes distintas, el unico forma de saber si la foto
+   * llego a ser es mirando que respondio el servidor.
+   */
+  console.log(
+    `[fotos] intento cliente=${id} tipo=${tipo} campos=${Object.keys(body).join(',') || '(ninguno)'} ` +
+      `archivo=${archivo instanceof File ? `si (${archivo.type}, ${archivo.size}b)` : `no (${archivo === undefined ? 'undefined' : typeof archivo})`}`,
+  );
+
+  if (!(archivo instanceof File)) {
+    throw badRequest('Se debe enviar el archivo en el campo "foto"');
+  }
+
+  if (archivo.size > TAMANO_MAXIMO) {
+    throw badRequest('La foto supera el tamaño maximo permitido (8 MB)');
+  }
+
+  const extension = extensionPermitida(archivo.type);
+  if (!extension) {
+    throw badRequest(`El archivo debe ser una imagen JPG, PNG o WebP (recibido: ${archivo.type})`);
+  }
+
+  // Se valida el tamaño antes de leer el archivo en memoria: un `arrayBuffer`
+  // de un archivo enorme se come el proceso del servidor.
+  const datos = new Uint8Array(await archivo.arrayBuffer());
+
+  const nombre = nombreArchivo(tipo, extension);
+  await guardarFoto(nombre, datos);
+
+  /**
+   * La foto anterior se borra del disco despues de que la nueva quedo guardada.
+   * Si el borrado fallara antes, el cliente se quedaria sin ninguna foto pero
+   * con el registro apuntando a un archivo inexistente.
+   */
+  const [anterior] = await db
+    .delete(fotosCliente)
+    .where(and(eq(fotosCliente.clienteId, id), eq(fotosCliente.tipo, tipo as TipoFotoCliente)))
+    .returning();
+
+  const [row] = await db
+    .insert(fotosCliente)
+    .values({ clienteId: id, tipo: tipo as TipoFotoCliente, uri: nombre })
+    .returning();
+
+  if (anterior) {
+    await borrarArchivo(anterior.uri);
+  }
+
+  return c.json({ foto: row }, 201);
+});
+
+clienteRoutes.delete('/:id/fotos/:tipo', async (c) => {
+  const id = assertUuid(c.req.param('id'));
+  const tipo = c.req.param('tipo');
+
+  if (!TIPOS_FOTO.includes(tipo as TipoFotoCliente)) {
+    throw badRequest('tipo debe ser cedula, persona o direccion');
+  }
+
+  const [row] = await db
+    .delete(fotosCliente)
+    .where(and(eq(fotosCliente.clienteId, id), eq(fotosCliente.tipo, tipo as TipoFotoCliente)))
+    .returning();
+
+  if (!row) {
+    throw notFound('El cliente no tiene esa foto');
+  }
+
+  await borrarArchivo(row.uri);
+
+  return c.json({ eliminada: row.tipo });
 });
 
 clienteRoutes.get('/:id', async (c) => {

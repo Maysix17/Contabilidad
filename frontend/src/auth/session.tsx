@@ -43,7 +43,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const salir = useCallback(async () => {
-    await clearSession();
+    // Solo aqui se revoca en el servidor: es una salida voluntaria.
+    await clearSession({ revocar: true });
     setUser(null);
   }, []);
 

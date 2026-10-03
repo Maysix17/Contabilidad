@@ -98,11 +98,13 @@ export default function RutaDetalleScreen() {
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <ScreenHeader
-          titulo={ruta?.nombre ?? 'Ruta'}
-          subtitulo={ruta ? `Operador: ${ruta.operador.nombre}` : 'Cargando'}
-          derecha={ruta ? <EstadoBadgeRuta estado={ruta.estado} /> : null}
-        />
+        <View style={styles.titulo}>
+          <ScreenHeader
+            titulo={ruta?.nombre ?? 'Ruta'}
+            subtitulo={ruta ? `Operador: ${ruta.operador.nombre}` : 'Cargando'}
+            derecha={ruta ? <EstadoBadgeRuta estado={ruta.estado} /> : null}
+          />
+        </View>
 
         {error ? <ErrorBox mensaje={error} /> : null}
         {cargando ? <ActivityIndicator /> : null}
@@ -219,6 +221,12 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: MaxContentWidth,
     alignSelf: 'center',
+  },
+  titulo: {
+    // Solo el padding lateral: el `ScreenHeader` ya pone su propio
+    // `marginTop`, y añadirlo aqui lo duplicaba y dejaba el titulo mas bajo
+    // que en las demas pantallas.
+    paddingHorizontal: Spacing.four,
   },
   contenido: {
     paddingHorizontal: Spacing.four,

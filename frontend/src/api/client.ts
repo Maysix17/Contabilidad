@@ -1,4 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { fetch as expoFetch } from 'expo/fetch';
+import { File } from 'expo-file-system';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:4000';
 
@@ -199,6 +201,8 @@ export class ApiError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    /** Etiqueta para distinguir fallos que la pantalla debe tratar distinto. */
+    readonly clase?: string,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -220,17 +224,33 @@ export async function restoreSession(): Promise<Session | null> {
     const session = JSON.parse(guardado) as Session;
     cache = session;
 
+    /**
+     * Solo un 401 real significa "esta sesion ya no sirve". Un error de red,
+     * un backend que reinicia o un timeout NO: son fallos temporales, y tratar
+     * esos como una sesion invalida hacia que un simple reload durante un
+     * reinicio del servidor borrara la sesion del telefono y mandara al login.
+     * Peor todavia, `clearSession` tambien revoca el refresh token en la base,
+     * asi que el usuario tendria que volver a escribir su contrasena.
+     *
+     * Cuando no se puede confirmar nada por red, se devuelve la sesion guardada:
+     * las peticiones siguientes mostraran su propio error de conexion si la red
+     * sigue caída, sin haber expulsado al usuario de la app.
+     */
     try {
       const user = await getMe();
       session.user = user;
       cache = session;
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(session));
-    } catch {
-      await clearSession();
-      return null;
-    }
+      return session;
+    } catch (cause) {
+      if (cause instanceof ApiError && cause.status === 401) {
+        await clearSession();
+        return null;
+      }
 
-    return session;
+      // Status 0 es "no hubo respuesta". Se conserva lo que habia en disco.
+      return session;
+    }
   } catch {
     return null;
   } finally {
@@ -243,16 +263,26 @@ async function guardar(session: Session): Promise<void> {
   await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(session));
 }
 
-export async function clearSession(): Promise<void> {
+/**
+ * Borra la sesion del telefono.
+ *
+ * `revocar` solo se usa al cerrar sesion a proposito. Cuando lo que falla es
+ * una validacion (un token vencido, una cuenta desactivada), revocar el refresh
+ * token en el servidor convierte un problema menor en uno terminal: la sesion
+ * queda inservible aunque el token siguiera siendo valido, y el usuario tiene
+ * que volver a escribir su contrasena. Aqui solo se borra lo local y se deja
+ * que el refresh token siga sirviendo hasta que el backend lo rechace de verdad.
+ */
+export async function clearSession(opciones: { revocar?: boolean } = {}): Promise<void> {
   const session = cache;
   cache = null;
   await AsyncStorage.removeItem(STORAGE_KEY);
 
-  if (session?.refreshToken) {
+  if (opciones.revocar && session?.refreshToken) {
     await fetch(`${API_URL}/api/auth/logout`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken: session.refreshToken}),
+      body: JSON.stringify({ refreshToken: session.refreshToken }),
     }).catch(() => undefined);
   }
 }
@@ -346,6 +376,60 @@ export async function updateCliente(id: string, input: Partial<ClienteInput>): P
 
 export async function deleteCliente(id: string): Promise<void> {
   await request<{ eliminado: string }>(`/api/clientes/${id}`, { method: 'DELETE' });
+}
+
+/* ------------------------ fotos del cliente ------------------------ */
+
+/**
+ * Hay tres ranuras por cliente y solo una foto en cada una: la base de datos
+ * tiene un indice unico por cliente y tipo, asi que volver a subir una foto
+ * reemplaza la anterior en vez de acumular versiones.
+ */
+export type TipoFotoCliente = 'cedula' | 'persona' | 'direccion';
+
+export interface FotoCliente {
+  id: string;
+  clienteId: string;
+  tipo: TipoFotoCliente;
+  uri: string;
+  creadoEn: string;
+}
+
+/** URL publica de la foto, para pintar en un `<Image>`. */
+export function urlFoto(nombreArchivo: string): string {
+  return `${API_URL}/fotos/${nombreArchivo}`;
+}
+
+export async function listarFotosCliente(clienteId: string): Promise<FotoCliente[]> {
+  const result = await request<{ fotos: FotoCliente[] }>(`/api/clientes/${clienteId}/fotos`);
+  return result.fotos;
+}
+
+export async function subirFotoCliente(
+  clienteId: string,
+  tipo: TipoFotoCliente,
+  uriLocal: string,
+): Promise<FotoCliente> {
+  const cuerpo = new FormData();
+  /**
+   * `File` de `expo-file-system` implementa `Blob`. Es lo que hay que adjuntar:
+   * el `fetch` global de React Native rechaza el objeto plano `{ uri, name,
+   * type }` con "Unsupported FormDataPart implementation", y el error sale
+   * como fallo de red, no como error de archivo.
+   */
+  cuerpo.append('foto', new File(uriLocal));
+
+  const result = await request<{ foto: FotoCliente }>(
+    `/api/clientes/${clienteId}/fotos?tipo=${tipo}`,
+    { method: 'POST', body: cuerpo, timeoutMs: TIMEOUT_SUBIDA_MS, multipart: true },
+  );
+  return result.foto;
+}
+
+export async function eliminarFotoCliente(clienteId: string, tipo: TipoFotoCliente): Promise<void> {
+  await request<{ eliminada: TipoFotoCliente }>(`/api/clientes/${clienteId}/fotos/${tipo}`, {
+    method: 'DELETE',
+  });
 }
 
 /* ------------------------------- creditos ------------------------------- */
@@ -667,7 +751,17 @@ export async function getIndicadores(): Promise<{
 
 /* --------------------------------- core --------------------------------- */
 
-type RequestInitExt = RequestInit & { anonimo?: boolean };
+type RequestInitExt = RequestInit & {
+  anonimo?: boolean;
+  timeoutMs?: number;
+  /**
+   * Marca explicita de subida multipart. No se fia de `instanceof FormData`
+   * para decidir el `Content-Type`: si esa comprobacion fallara, se mandaria
+   * `application/json` sin el limite del archivo y el servidor recibiria la
+   * foto vacia. Se declara a mano en la unica llamada que lo necesita.
+   */
+  multipart?: boolean;
+};
 
 /**
  * Sin este tope, un `fetch` que no logra conectar se queda pendiente para
@@ -675,6 +769,9 @@ type RequestInitExt = RequestInit & { anonimo?: boolean };
  * corre y los botones quedan en "Cargando…" sin mostrar ningun error.
  */
 const TIMEOUT_MS = 20000;
+
+/** Subir una foto por una red movil tarda bastante mas que una peticion normal. */
+const TIMEOUT_SUBIDA_MS = 90000;
 
 export const MENSAJE_SIN_CONEXION =
   'No se pudo conectar con el servidor. Revisa que el backend esté corriendo ' +
@@ -685,8 +782,17 @@ export async function request<T>(
   init: RequestInitExt = {},
   retry = true,
 ): Promise<T> {
+  /**
+   * `FormData` lleva su propio `Content-Type` con el limite del archivo
+   * adentro. Ponerle `application/json` a mano rompe el parseo del servidor y la
+   * foto llega vacia.
+   */
+  const esFormData =
+    init.multipart === true ||
+    (init.multipart === undefined && typeof FormData !== 'undefined' && init.body instanceof FormData);
+
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
+    ...(esFormData ? {} : { 'Content-Type': 'application/json' }),
     ...((init.headers as Record<string, string>) ?? {}),
   };
 
@@ -695,12 +801,20 @@ export async function request<T>(
   }
 
   const control = new AbortController();
-  const temporizador = setTimeout(() => control.abort(), TIMEOUT_MS);
+  const temporizador = setTimeout(() => control.abort(), init.timeoutMs ?? TIMEOUT_MS);
 
   let response: Response;
 
+  /**
+   * Las subidas multipart van por el `fetch` de Expo, no por el global de
+   * React Native. El global rechaza un `FormData` con un `File` de Expo y
+   * lanza "Unsupported FormDataPart implementation"; el de Expo esta hecho
+   * para esto y arma el `multipart/form-data` con su delimitador.
+   */
+  const enviar = init.multipart ? expoFetch : fetch;
+
   try {
-    response = await fetch(`${API_URL}${path}`, {
+    response = await enviar(`${API_URL}${path}`, {
       ...init,
       headers,
       signal: control.signal,
@@ -709,16 +823,32 @@ export async function request<T>(
     if (cause instanceof Error && cause.name === 'AbortError') {
       throw new ApiError(0, 'El servidor no respondió a tiempo.');
     }
-    throw new ApiError(0, MENSAJE_SIN_CONEXION);
+    /**
+     * Antes se descartaba `cause` y todos los fallos de red se veian igual.
+     * Con una subida de archivo eso es un problema: un corte de WiFi, un
+     * archivo que React Native no logra leer y un `FormData` mal construido
+     * dan el mismo error, y son causas distintas. Se conserva el motivo.
+     */
+    console.warn('[api] fallo de red en', path, cause);
+    const detalle =
+      cause instanceof Error && cause.message ? ` (${cause.message})` : '';
+    throw new ApiError(0, `${MENSAJE_SIN_CONEXION}${detalle}`);
   } finally {
     clearTimeout(temporizador);
   }
 
+  /**
+   * Cuando el access token venció, `refrescar()` lo resuelve sin que la persona
+   * se entere. Si el refresh tambien falla, la sesion ya no existe: eso no es un
+   * fallo de red ni de datos, y se marca como tal para que la pantalla no lo
+   * muestre como un error cualquiera.
+   */
   if (response.status === 401 && retry && cache?.refreshToken) {
     const renovado = await refrescar();
     if (renovado) {
       return request<T>(path, init, false);
     }
+    throw new ApiError(401, 'Tu sesión terminó. Vuelve a iniciar sesión.', 'sesionCaducada');
   }
 
   const payload = await response.json().catch(() => null);
@@ -755,10 +885,28 @@ async function refrescar(): Promise<boolean> {
       body: JSON.stringify({ refreshToken }),
     }).catch(() => null);
 
-    if (!response?.ok) {
+    /**
+     * Aqui se distingue el fallo de red del token rechazado:
+     *
+     * - `null` (o una respuesta sin status) es que no hubo respuesta: se
+     *   devuelve `false` SIN borrar la sesion. Antes, un corte de WiFi en
+     *   pleno cobro revocaba el refresh token en el servidor y obligaba a
+     *   iniciar sesion de nuevo.
+     * - 401/403 es que el token ya no sirve (expirado, revocado, cuenta
+     *   desactivada): si se guarda, ya no valdra nunca mas.
+     */
+    if (!response) return false;
+
+    if (response.status === 401 || response.status === 403) {
+      // El token no sirve: se pierde la sesion local. Sin `revocar` a proposito,
+      // porque rotarlo es una carrera normal entre dos peticiones y no una
+      // decision del usuario cerrar sesion.
       await clearSession();
+      console.warn('[api] refresh rechazado, se cierra la sesion');
       return false;
     }
+
+    if (!response.ok) return false;
 
     const session = (await response.json()) as Session;
     await guardar(session);

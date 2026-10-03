@@ -57,10 +57,12 @@ export default function AbonosScreen() {
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <ScreenHeader
-          titulo="Abonos"
-          subtitulo={`${clientes.length} ${clientes.length === 1 ? 'cliente' : 'clientes'} por cobrar`}
-        />
+        <View style={styles.titulo}>
+          <ScreenHeader
+            titulo="Abonos"
+            subtitulo={`${clientes.length} ${clientes.length === 1 ? 'cliente' : 'clientes'} por cobrar`}
+          />
+        </View>
 
         <TextInput
           value={search}
@@ -184,6 +186,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: Spacing.three,
+  },
+  titulo: {
+    // Solo el padding lateral: el `ScreenHeader` ya pone su propio
+    // `marginTop`, y añadirlo aqui lo duplicaba y dejaba el titulo mas bajo
+    // que en las demas pantallas.
+    paddingHorizontal: Spacing.four,
   },
   identidad: { flexShrink: 1, gap: 2 },
   valores: { alignItems: 'flex-end', gap: 2 },

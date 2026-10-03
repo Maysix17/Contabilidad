@@ -1,4 +1,4 @@
-import { and, eq, isNull, lt } from 'drizzle-orm';
+import { and, desc, eq, gt, isNull, lt } from 'drizzle-orm';
 
 import { hashPassword, verifyPassword } from '@/auth/password';
 import { normalizarCedula } from '@/auth/cedula';
@@ -21,6 +21,13 @@ export interface SessionResponse {
   refreshToken: string;
   expiresIn: number;
 }
+
+/**
+ * Cuanto tiempo sigue sirviendo un refresh token ya rotado. Cubre de sobra el
+ * caso real: dos peticiones del cliente fallando con 401 al mismo tiempo y
+ * renovando cada una por su cuenta.
+ */
+const VENTANA_REUTILIZACION_MS = 30_000;
 
 function toSessionResponse(
   user: UsuarioSession,
@@ -104,11 +111,61 @@ export async function rotateRefreshToken(token: string): Promise<SessionResponse
   const [stored] = await db
     .select()
     .from(tokensRefresh)
-    .where(and(eq(tokensRefresh.hashToken, tokenHash), isNull(tokensRefresh.revocadoEn)))
+    .where(eq(tokensRefresh.hashToken, tokenHash))
     .limit(1);
 
   if (!stored || stored.expiraEn.getTime() <= Date.now()) {
     throw unauthorized('Sesion expirada, vuelve a iniciar sesion');
+  }
+
+  /**
+   * Ventana de reutilizacion.
+   *
+   * Rotar el token vuelve la operacion inutilizable para el cliente: si dos
+   * peticiones fallan con 401 a la vez y cada una renueva por su cuenta, la
+   * segunda llega con un token que la primera ya consumio, el servidor responde
+   * error, y el cliente borra la sesion y manda al login aunque la renovacion
+   * si haya funcionado.
+   *
+   * Con esta ventana, un token ya rotado pero usado hace menos de
+   * `VENTANA_REUTILIZACION_MS` se acepta y se devuelve la sesion vigente del
+   * mismo usuario, sin emitir un token nuevo. Es el patron estandar para hacer
+   * idempotente la rotacion: la unica forma real desucribo es presentar un token
+   * mucho mas viejo que esa ventana, que ya no puede ser un error de carrera.
+   */
+  if (stored.revocadoEn) {
+    const antiguedad = Date.now() - stored.revocadoEn.getTime();
+    if (antiguedad > VENTANA_REUTILIZACION_MS) {
+      throw unauthorized('Sesion expirada, vuelve a iniciar sesion');
+    }
+
+    const [vigente] = await db
+      .select({ id: tokensRefresh.id })
+      .from(tokensRefresh)
+      .where(
+        and(
+          eq(tokensRefresh.usuarioId, stored.usuarioId),
+          isNull(tokensRefresh.revocadoEn),
+          gt(tokensRefresh.expiraEn, new Date()),
+        ),
+      )
+      .orderBy(desc(tokensRefresh.creadoEn))
+      .limit(1);
+
+    if (!vigente) {
+      throw unauthorized('Sesion expirada, vuelve a iniciar sesion');
+    }
+
+    const [user] = await db.select().from(usuarios).where(eq(usuarios.id, stored.usuarioId)).limit(1);
+    if (!user || !user.activo) {
+      throw unauthorized('La cuenta esta desactivada');
+    }
+
+    return toSessionResponse(
+      { id: user.id, cedula: user.cedula, nombre: user.nombre, rol: user.rol },
+      token,
+      await signAccessToken({ userId: user.id, cedula: user.cedula }),
+    );
   }
 
   const [user] = await db.select().from(usuarios).where(eq(usuarios.id, stored.usuarioId)).limit(1);

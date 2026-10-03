@@ -34,6 +34,9 @@ yarn-error.*
 .env
 .env*.local
 
+# fotos de clientes (contenido generado por el servidor, no codigo)
+backend/uploads/
+
 # typescript
 *.tsbuildinfo
 

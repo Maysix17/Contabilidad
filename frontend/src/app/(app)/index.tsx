@@ -80,24 +80,37 @@ export default function InicioScreen() {
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <View style={styles.saludo}>
-          <ThemedText type="subtitle">Hola, {user?.nombre ?? ''}</ThemedText>
-          <Pressable
-            onPress={() => router.push('/perfil')}
-            style={({ pressed }) => [
-              styles.rol,
-              { backgroundColor: Pastel[tonoRol].superficie },
-              pressed && styles.rolPulsado,
-            ]}>
-            <ThemedText type="smallBold" style={{ color: Pastel[tonoRol].texto }}>
+        {/*
+          Identidad de quien esta operando. Va como una fila pulsable y no como
+          un saludo suelto: asi el nombre y el rol son datos, no una decoracion,
+          y toda la fila lleva al perfil sin tener que acertar el chip de rol.
+        */}
+        <Pressable
+          onPress={() => router.push('/perfil')}
+          style={({ pressed }) => [styles.identidad, pressed && styles.identidadPulsada]}>
+          <View style={[styles.avatar, { backgroundColor: Pastel[tonoRol].superficie }]}>
+            <MaterialCommunityIcons
+              name={esAdmin ? 'shield-account-outline' : 'account-outline'}
+              size={20}
+              color={Pastel[tonoRol].texto}
+            />
+          </View>
+
+          <View style={styles.identidadTexto}>
+            <ThemedText type="smallBold" numberOfLines={1}>
+              {user?.nombre ?? 'Sesión sin nombre'}
+            </ThemedText>
+            <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+              {fechaLarga()}
+            </ThemedText>
+          </View>
+
+          <View style={[styles.rol, { backgroundColor: Pastel[tonoRol].superficie }]}>
+            <ThemedText type="eyebrow" style={{ color: Pastel[tonoRol].texto }}>
               {esAdmin ? 'Admin' : 'Operador'}
             </ThemedText>
-            <MaterialCommunityIcons name="chevron-right" size={14} color={Pastel[tonoRol].texto} />
-          </Pressable>
-        </View>
-        <ThemedText type="small" themeColor="textSecondary">
-          {fechaLarga()}
-        </ThemedText>
+          </View>
+        </Pressable>
 
         <ScrollView
           contentContainerStyle={styles.content}
@@ -245,21 +258,30 @@ function fechaLarga(): string {
 }
 
 const styles = StyleSheet.create({
-  saludo: {
+  identidad: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,
     marginTop: Spacing.three,
+    marginHorizontal: Spacing.four,
+  },
+  identidadPulsada: { opacity: 0.6 },
+  avatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  identidadTexto: {
+    flex: 1,
+    gap: 1,
   },
   rol: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
     paddingHorizontal: Spacing.two,
-    paddingVertical: 3,
-    borderRadius: Spacing.two,
+    paddingVertical: 4,
+    borderRadius: Spacing.one,
   },
-  rolPulsado: { opacity: 0.6 },
   container: { flex: 1 },
   safeArea: {
     flex: 1,
