@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ApiError, listClientesPorCobrar, type ClientePorCobrar } from '@/api/client';
 import { ScreenHeader } from '@/components/screen-header';
+import { EtiquetaMora, TarjetaMora } from '@/components/tarjeta-mora';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { ErrorBox, Vacio } from '@/components/ui-cards';
@@ -115,7 +116,9 @@ export default function AbonosScreen() {
               href={{ pathname: '/creditos/[id]', params: { id: cliente.creditoActivo.id } }}
               asChild>
               <Pressable style={({ pressed }) => [pressed && styles.press]}>
-                <ThemedView type="backgroundElement" style={styles.tarjeta}>
+                <TarjetaMora
+                  vencidaMasAntigua={cliente.creditoActivo.vencidaMasAntigua}
+                  style={styles.tarjeta}>
                   <View style={styles.encabezado}>
                     <View style={styles.identidad}>
                       <ThemedText type="smallBold">
@@ -124,6 +127,7 @@ export default function AbonosScreen() {
                       <ThemedText type="small" themeColor="textSecondary">
                         Doc. {cliente.documento}
                       </ThemedText>
+                      <EtiquetaMora vencidaMasAntigua={cliente.creditoActivo.vencidaMasAntigua} />
                     </View>
                     <View style={styles.valores}>
                       <ThemedText type="smallBold">
@@ -138,7 +142,7 @@ export default function AbonosScreen() {
                     Cuota {formatearPesos(cliente.creditoActivo.valorCuota)} ·{' '}
                     {cliente.creditoActivo.numeroPeriodos} periodos
                   </ThemedText>
-                </ThemedView>
+                </TarjetaMora>
               </Pressable>
             </Link>
           ))}

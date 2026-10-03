@@ -35,6 +35,7 @@ import { MaxContentWidth, Pastel, Spacing } from '@/constants/theme';
 import { useRefresco } from '@/hooks/use-refresco';
 import { ZONA_OPERACION } from '@/utils/fecha';
 import { formatearFecha, formatearPesos } from '@/utils/money';
+import { calcularMora, tonoMora } from '@/utils/mora';
 
 export default function InicioScreen() {
   const router = useRouter();
@@ -191,22 +192,31 @@ export default function InicioScreen() {
                   </Tarjeta>
                 ) : (
                   <Tarjeta style={styles.lista}>
-                    {datos.topDeudores.map((deudor, indice) => (
-                      <FilaLista
-                        key={deudor.creditoId}
-                        titulo={`${deudor.nombre} ${deudor.apellido}`}
-                        subtitulo={`Doc. ${deudor.documento}`}
-                        valor={formatearPesos(deudor.saldo)}
-                        nota={
-                          deudor.cuotasAtrasadas > 0
-                            ? `${deudor.cuotasAtrasadas} vencidas`
-                            : `Cuota ${formatearPesos(deudor.valorCuota)}`
-                        }
-                        valorColor={deudor.cuotasAtrasadas > 0 ? '#DC2626' : undefined}
-                        onPress={() => router.push(`/creditos/${deudor.creditoId}`)}
-                        separador={indice < datos.topDeudores.length - 1}
-                      />
-                    ))}
+                    {datos.topDeudores.map((deudor, indice) => {
+                      // Estas filas viven dentro de una tarjeta continua, sin
+                      // separacion entre ellas: pintar cada fila dejaria un
+                      // patchwork. El color va en la cifra, que es lo que se
+                      // escanea de un vistazo.
+                      const mora = calcularMora(deudor.vencidaMasAntigua);
+                      const tono = mora ? tonoMora(mora) : null;
+
+                      return (
+                        <FilaLista
+                          key={deudor.creditoId}
+                          titulo={`${deudor.nombre} ${deudor.apellido}`}
+                          subtitulo={`Doc. ${deudor.documento}`}
+                          valor={formatearPesos(deudor.saldo)}
+                          nota={
+                            mora
+                              ? mora.etiqueta
+                              : `Cuota ${formatearPesos(deudor.valorCuota)}`
+                          }
+                          valorColor={tono?.texto}
+                          onPress={() => router.push(`/creditos/${deudor.creditoId}`)}
+                          separador={indice < datos.topDeudores.length - 1}
+                        />
+                      );
+                    })}
                   </Tarjeta>
                 )}
               </View>

@@ -137,6 +137,7 @@ indicadorRoutes.get('/', async (c) => {
         valorCuota: aNumero(fila.valorCuota),
         cuotasPendientes: resumen.pendientes,
         cuotasAtrasadas: resumen.atrasadas,
+        vencidaMasAntigua: resumen.vencidaMasAntigua,
         proximaVencimiento: resumen.proximaVencimiento,
       });
     }

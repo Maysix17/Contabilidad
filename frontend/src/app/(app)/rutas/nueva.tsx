@@ -32,7 +32,8 @@ import { ErrorBox, SectionHeader, StatCard, Vacio } from '@/components/ui-cards'
 import { MaxContentWidth, Pastel, Spacing } from '@/constants/theme';
 import { useRefresco } from '@/hooks/use-refresco';
 import { hoy } from '@/utils/fecha';
-import { formatearFecha, formatearPesos } from '@/utils/money';
+import { formatearPesos } from '@/utils/money';
+import { calcularMora, tonoMora } from '@/utils/mora';
 
 export default function NuevaRutaScreen() {
   const router = useRouter();
@@ -299,6 +300,12 @@ function FilaCandidato({
   marcado: boolean;
   onPress: () => void;
 }) {
+  // El fondo de esta fila lo usa el estado de seleccion, asi que el nivel de
+  // mora se aplica solo a la etiqueta, para que marcar un cliente no borre la
+  // senal de quantos dias lleva de atraso.
+  const mora = calcularMora(fila.vencimientoMasAntiguo);
+  const tono = mora ? tonoMora(mora) : Pastel.neutro;
+
   return (
     <Pressable
       onPress={onPress}
@@ -324,12 +331,12 @@ function FilaCandidato({
         <ThemedText type="small" themeColor="textSecondary">
           Doc. {fila.documento} · {fila.direccion}
         </ThemedText>
-        {fila.atrasadas > 0 ? (
-          <View style={[styles.mora, { backgroundColor: Pastel.rojo.superficie }]}>
-            <MaterialCommunityIcons name="alert-circle-outline" size={12} color={Pastel.rojo.texto} />
-            <ThemedText type="small" style={{ color: Pastel.rojo.texto }}>
-              {fila.atrasadas} {fila.atrasadas === 1 ? 'cuota vencida' : 'cuotas vencidas'} ·{' '}
-              {formatearFecha(fila.vencimientoMasAntiguo)}
+        {mora ? (
+          <View style={[styles.mora, { backgroundColor: tono.superficie }]}>
+            <MaterialCommunityIcons name="alert-circle-outline" size={12} color={tono.texto} />
+            <ThemedText type="small" style={{ color: tono.texto }}>
+              {mora.etiqueta} · {fila.atrasadas}{' '}
+              {fila.atrasadas === 1 ? 'cuota' : 'cuotas'}
             </ThemedText>
           </View>
         ) : null}

@@ -38,6 +38,7 @@ export const Pastel = {
   azul: { superficie: '#EAF2FE', solido: '#CFE0FA', texto: '#1D4E89' },
   verde: { superficie: '#E6F5EC', solido: '#C9E7D5', texto: '#1B6B45' },
   ambar: { superficie: '#FDF2E3', solido: '#F8E3C4', texto: '#8A5514' },
+  naranja: { superficie: '#FDEEE0', solido: '#F8DCC0', texto: '#8F4B12' },
   rojo: { superficie: '#FDEBEB', solido: '#F8D5D5', texto: '#992E2E' },
   violeta: { superficie: '#F1ECFB', solido: '#DFD5F6', texto: '#553C9A' },
   teal: { superficie: '#E4F4F3', solido: '#C9E7E5', texto: '#146B67' },

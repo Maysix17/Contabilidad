@@ -75,6 +75,10 @@ export interface ClientePorCobrar extends Cliente {
     totalPagar: string;
     numeroPeriodos: number;
     fechaVencimiento: string;
+    /** Fecha de la cuota pendiente mas vieja que ya vencio; `null` si esta al dia. */
+    vencidaMasAntigua: string | null;
+    /** Cuantas cuotas pendientes hay vencidas. */
+    vencidas: number;
   };
 }
 
@@ -85,6 +89,7 @@ export interface ResumenCuotas {
   pendientes: number;
   atrasadas: number;
   proximaVencimiento: string | null;
+  vencidaMasAntigua: string | null;
   saldoTotal: number;
   valorCuota: number;
 }
@@ -185,6 +190,7 @@ export interface TopDeudor {
   valorCuota: number;
   cuotasPendientes: number;
   cuotasAtrasadas: number;
+  vencidaMasAntigua: string | null;
   proximaVencimiento: string | null;
 }
 

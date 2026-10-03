@@ -1,4 +1,4 @@
-import { and, asc, eq, ilike, ne, notExists, or, type SQL } from 'drizzle-orm';
+import { and, asc, eq, ilike, inArray, lt, ne, notExists, or, sql, type SQL } from 'drizzle-orm';
 import { Hono } from 'hono';
 
 import {
@@ -8,8 +8,9 @@ import {
   nombreArchivo,
   TAMANO_MAXIMO,
 } from '@/almacen/fotos';
+import { hoy } from '@/creditos/calculos';
 import { db } from '@/db';
-import { clientes, creditos, fotosCliente, type TipoFotoCliente } from '@/db/schema';
+import { clientes, creditos, cuotas, fotosCliente, type TipoFotoCliente } from '@/db/schema';
 import { badRequest, conflict, notFound, requireAuth, requireRole } from '@/http';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -218,18 +219,65 @@ clienteRoutes.get('/con-credito-activo', async (c) => {
     .orderBy(asc(creditos.fechaVencimiento), asc(clientes.apellido))
     .limit(300);
 
+  /**
+   * Cuotas ya vencidas por credito, en una consulta aparte y no con un
+   * `join` lateral: la subconsulta correlacionada con `creditos.id` no la arma
+   * Drizzle aca y devolvia 500 en cuanto se afectaba mas de un credito. Es
+   * ademas la forma mas barata, porque el filtro `inArray` deja entrar solo las
+   * cuotas de los 300 creditos de la pagina.
+   *
+   * Lo que dice "llevo tres dias debiendo" es la cuota pendiente mas vieja, no
+   * el vencimiento final del credito: ese ultimo es la fecha en que termina de
+   * pagar y por lo general esta meses adelante.
+   */
+  const ids = rows.map((row) => row.creditoId);
+  const fecha = hoy();
+
+  const vencidasPorCredito = new Map<string, { vencidaMasAntigua: string; vencidas: number }>();
+
+  if (ids.length > 0) {
+    const vencidas = await db
+      .select({
+        creditoId: cuotas.creditoId,
+        vencidaMasAntigua: sql<string>`min(${cuotas.fechaVencimiento})`,
+        vencidas: sql<number>`count(*)::int`,
+      })
+      .from(cuotas)
+      .where(
+        and(
+          inArray(cuotas.creditoId, ids),
+          eq(cuotas.estado, 'pendiente'),
+          lt(cuotas.fechaVencimiento, fecha),
+        ),
+      )
+      .groupBy(cuotas.creditoId);
+
+    for (const fila of vencidas) {
+      vencidasPorCredito.set(fila.creditoId, {
+        vencidaMasAntigua: fila.vencidaMasAntigua,
+        vencidas: fila.vencidas,
+      });
+    }
+  }
+
   return c.json({
-    clientes: rows.map((row) => ({
-      ...row.cliente,
-      creditoActivo: {
-        id: row.creditoId,
-        saldo: row.saldo,
-        valorCuota: row.valorCuota,
-        totalPagar: row.totalPagar,
-        numeroPeriodos: row.numeroPeriodos,
-        fechaVencimiento: row.fechaVencimiento,
-      },
-    })),
+    clientes: rows.map((row) => {
+      const mora = vencidasPorCredito.get(row.creditoId);
+
+      return {
+        ...row.cliente,
+        creditoActivo: {
+          id: row.creditoId,
+          saldo: row.saldo,
+          valorCuota: row.valorCuota,
+          totalPagar: row.totalPagar,
+          numeroPeriodos: row.numeroPeriodos,
+          fechaVencimiento: row.fechaVencimiento,
+          vencidaMasAntigua: mora?.vencidaMasAntigua ?? null,
+          vencidas: mora?.vencidas ?? 0,
+        },
+      };
+    }),
   });
 });
 

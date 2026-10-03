@@ -291,6 +291,12 @@ export interface EstadoCuotas {
   pendientes: number;
   atrasadas: number;
   proximaVencimiento: string | null;
+  /**
+   * Fecha de la cuota pendiente mas vieja que ya vencio, o `null` si no hay
+   * ninguna vencida. Es la que dice cuantos dias lleva el cliente en mora, y
+   * no el vencimiento final del credito, que suele estar meses adelante.
+   */
+  vencidaMasAntigua: string | null;
   saldoTotal: number;
   valorCuota: number;
 }
@@ -313,12 +319,18 @@ export function resumenCuotas(
   const pendientes = cuotas.filter((cuota) => cuota.estado !== 'pagada');
   const proxima = pendientes.sort((a, b) => a.numero - b.numero)[0] ?? null;
 
+  const vencidas = pendientes
+    .filter((cuota) => cuota.fechaVencimiento < fechaReferencia)
+    .map((cuota) => cuota.fechaVencimiento)
+    .sort();
+
   return {
     total: cuotas.length,
     pagadas: pagadas.length,
     pendientes: pendientes.length,
-    atrasadas: pendientes.filter((cuota) => cuota.fechaVencimiento < fechaReferencia).length,
+    atrasadas: vencidas.length,
     proximaVencimiento: proxima?.fechaVencimiento ?? null,
+    vencidaMasAntigua: vencidas[0] ?? null,
     saldoTotal: aNumero(saldo),
     valorCuota: aNumero(valorCuota),
   };

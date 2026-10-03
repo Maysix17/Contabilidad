@@ -1,6 +1,7 @@
 import {
   and,
   asc,
+  desc,
   eq,
   inArray,
   isNull,
@@ -205,7 +206,10 @@ rutaRoutes.get('/', async (c) => {
     .from(rutas)
     .innerJoin(usuarios, eq(rutas.operadorId, usuarios.id))
     .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .orderBy(asc(rutas.fecha), asc(usuarios.nombre));
+    // De la mas reciente a la mas antigua. Al reves, el historial se leia de
+    // abajo hacia arriba y la ruta de hoy quedaba al final de una lista que
+    // con los dias se iba haciendo larga.
+    .orderBy(desc(rutas.fecha), asc(usuarios.nombre));
 
   const ids = filas.map((fila) => fila.ruta.id);
 
